@@ -1,3 +1,4 @@
 /target
 /config/email.toml
 /cookies.txt
+*.code-workspace
