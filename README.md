@@ -18,16 +18,48 @@ It authenticates users without passwords by sending them time-limited login link
 
 ## 📦 Directory Structure
 
-```
+```bash
 runegate/
 ├── src/
-│   └── main.rs
+│   ├── main.rs              # Main application with auth & proxy functionality
+│   ├── auth.rs             # JWT token creation and validation
+│   ├── email.rs            # Email configuration types
+│   ├── proxy.rs            # Reverse proxy implementation
+│   └── send_magic_link.rs  # Email sending functionality
+├── static/
+│   └── login.html          # Login page for magic link requests
+├── examples/
+│   ├── send_email.rs       # Example for testing email sending
+│   ├── test_target_service.rs  # Demo service to proxy to
+│   └── test_jwt_validation.rs  # Tool for testing JWT tokens
 ├── config/
-│   └── email.toml           # SMTP configuration
-├── .env                     # Optional: secrets and overrides
+│   └── email.toml          # SMTP configuration
+├── .env                    # Optional: secrets and overrides
 ├── Cargo.toml
 └── README.md
 ```
+
+---
+
+## 🛠 Architecture
+
+Runegate uses a reverse proxy architecture to secure access to your internal services:
+
+```bash
+┌─────────────┐       ┌───────────────┐       ┌─────────────────┐
+│             │       │               │       │                 │
+│    User     ├──────►│    Runegate   ├──────►│  Target Service │
+│             │       │    (7870)     │       │     (7860)      │
+└─────────────┘       └───────────────┘       └─────────────────┘
+```
+
+- **Runegate Proxy (Port 7870)**: This is the service users directly access. It handles authentication and proxies requests to the target service.
+
+- **Target Service (Port 7860)**: This is your internal application that Runegate protects. Users never access this directly, only through Runegate after authentication.
+
+When a user clicks a magic link, they're directed to Runegate (port 7870), which validates their token, creates an authenticated session, and then proxies their requests to the target service (port 7860).
+
+This separation keeps your internal service secure while Runegate handles all the authentication logic.
 
 ---
 
@@ -56,22 +88,71 @@ This link is valid for 15 minutes."""
 
 ## 🚀 Usage
 
-Coming soon:
-- Start with `cargo run`
-- Send a POST request to `/login` with `{"email": "user@example.com"}`
-- Email is sent via `lettre` over TLS
-- Access proxy is launched on `localhost:7870`
+### Running the Proxy
+
+1. Configure your SMTP settings in `config/email.toml`
+2. Start the application:
+
+   ```bash
+   cargo run
+   ```
+
+3. The proxy will be available at `http://localhost:7870`
+
+### Authentication Flow
+
+1. Access any protected resource and you'll be redirected to the login page
+2. Enter your email to receive a magic link
+3. Check your email and click the link
+4. You'll be authenticated and redirected to the protected resource
+
+### Environment Variables
+
+Optional configuration through environment variables or `.env` file:
+
+```bash
+# JWT secret for token signing (recommended for production)
+RUNEGATE_JWT_SECRET=your_secure_jwt_secret
+
+# Session key for cookies (recommended for production)
+RUNEGATE_SESSION_KEY=your_secure_session_key
+
+# Target service URL (defaults to http://127.0.0.1:7860)
+RUNEGATE_TARGET_SERVICE=http://your-service-url
+
+# Base URL for magic links (defaults to http://localhost:7870)
+RUNEGATE_BASE_URL=https://your-public-url
+```
+
+### Testing Tools
+
+Runegate includes several example scripts for testing:
+
+```bash
+# Test email sending
+cargo run --example send_email -- recipient@example.com
+
+# Generate a JWT token for testing
+cargo run --example test_jwt_validation your@email.com
+
+# Run a test target service
+cargo run --example test_target_service
+```
 
 ---
 
-## 🔐 Roadmap
+## 🔒 Roadmap
 
 - [x] Email config loading via TOML
 - [x] Magic link generator
-- [ ] Auth endpoint to validate token
-- [ ] Reverse proxy handler with session check
+- [x] Auth endpoint to validate token
+- [x] Reverse proxy handler with session check
+- [x] JWT-based session management
+- [x] Static login page UI
 - [ ] Rate limiting and logging
-- [ ] Cookie-based session fallback (optional)
+- [ ] Middleware implementation for route protection
+- [ ] Extended error handling and logging
+- [ ] Production deployment guides
 
 ---
 
