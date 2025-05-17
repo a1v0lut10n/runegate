@@ -13,6 +13,7 @@ It authenticates users without passwords by sending them time-limited login link
 - 🔁 Stateless authentication flow
 - 🔒 Secure-by-default with token expiry
 - ⚡ Built on `actix-web` for high performance
+- 📊 Structured logging with `tracing` for observability
 
 ---
 
@@ -22,10 +23,12 @@ It authenticates users without passwords by sending them time-limited login link
 runegate/
 ├── src/
 │   ├── main.rs              # Main application with auth & proxy functionality
-│   ├── auth.rs             # JWT token creation and validation
-│   ├── email.rs            # Email configuration types
-│   ├── proxy.rs            # Reverse proxy implementation
-│   └── send_magic_link.rs  # Email sending functionality
+│   ├── auth.rs              # JWT token creation and validation
+│   ├── email.rs             # Email configuration types
+│   ├── proxy.rs             # Reverse proxy implementation
+│   ├── logging.rs           # Structured logging and tracing setup
+│   ├── middleware.rs        # Auth middleware implementation
+│   └── send_magic_link.rs   # Email sending functionality
 ├── static/
 │   └── login.html          # Login page for magic link requests
 ├── examples/
@@ -122,7 +125,80 @@ RUNEGATE_TARGET_SERVICE=http://your-service-url
 
 # Base URL for magic links (defaults to http://localhost:7870)
 RUNEGATE_BASE_URL=https://your-public-url
+
+# Logging level (defaults to runegate=debug,actix_web=info)
+RUST_LOG=runegate=debug,actix_web=info,awc=debug
 ```
+
+### Logging and Observability
+
+Runegate uses the `tracing` ecosystem for structured logging and observability:
+
+```bash
+# Run with default console logging (development mode)
+cargo run
+
+# Run with detailed debug logging
+RUST_LOG=debug cargo run
+
+# Run with very verbose tracing
+RUST_LOG=debug,runegate=trace,actix_web=trace cargo run
+```
+
+Log levels can be configured for different components:
+
+- `error`: Only critical errors
+- `warn`: Warnings and errors
+- `info`: General information plus warnings/errors (default)
+- `debug`: Detailed debugging information
+- `trace`: Very verbose tracing information
+
+Example log output patterns:
+
+```log
+# HTTP requests are automatically logged with timing information
+[INFO] runegate::middleware: User is authenticated, allowing access to: /dashboard
+
+# Auth events are logged
+[INFO] runegate::auth: Magic link generated for user@example.com
+```
+
+#### Configuring Logging Format
+
+Runegate supports two logging formats:
+
+1. **Console format** (default): Readable, colorized logs for development
+2. **JSON format**: Structured logs for production and log aggregation systems
+
+The logging format can be configured using the `RUNEGATE_LOG_FORMAT` environment variable, which can be set in your `.env` file or directly in the environment. This eliminates the need to recompile when switching formats.
+
+**In your `.env` file:**
+
+```env
+# Console logging (default)
+RUST_LOG=info
+
+# Or JSON logging for production
+RUST_LOG=info
+RUNEGATE_LOG_FORMAT=json
+```
+
+**Via environment variables:**
+
+```bash
+# Run with console logging (default)
+RUST_LOG=info cargo run
+
+# Run with JSON logging (for production/log aggregation)
+RUST_LOG=info RUNEGATE_LOG_FORMAT=json cargo run > runegate.log
+
+# For Docker or other environments
+export RUST_LOG=info
+export RUNEGATE_LOG_FORMAT=json
+cargo run
+```
+
+JSON logs can be easily processed by log aggregation tools like Elasticsearch, Grafana Loki, or other similar systems, and contain all the same contextual information as the console logs but in a machine-readable format.
 
 ### Testing Tools
 

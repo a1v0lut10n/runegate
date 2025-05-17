@@ -1,6 +1,7 @@
 use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::instrument;
 
 // Environment variable name for JWT secret
 pub const JWT_SECRET_ENV: &str = "RUNEGATE_JWT_SECRET";
@@ -15,6 +16,7 @@ pub struct Claims {
 }
 
 /// Creates a JWT token for a user
+#[instrument(fields(email = %email, expiry_minutes = %expiry_minutes))]
 pub fn create_token(email: &str, expiry_minutes: u64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -36,6 +38,7 @@ pub fn create_token(email: &str, expiry_minutes: u64) -> String {
 }
 
 /// Verifies a JWT token and returns the user's email if valid
+#[instrument(skip(token), fields(token_truncated = %format!("{}..", &token.chars().take(10).collect::<String>())))]
 pub fn verify_token(token: &str) -> Result<String, JwtError> {
     let secret = get_jwt_secret();
     let token_data = decode::<Claims>(
@@ -48,12 +51,14 @@ pub fn verify_token(token: &str) -> Result<String, JwtError> {
 }
 
 /// Generates a magic link URL for authentication
+#[instrument(fields(email = %email, base_url = %base_url, expiry_minutes = %expiry_minutes))]
 pub fn generate_magic_link(email: &str, base_url: &str, expiry_minutes: u64) -> String {
     let token = create_token(email, expiry_minutes);
     format!("{}/auth?token={}", base_url, token)
 }
 
 /// Gets the JWT secret from environment or uses default
+#[instrument]
 fn get_jwt_secret() -> Vec<u8> {
     std::env::var(JWT_SECRET_ENV)
         .map(|s| s.into_bytes())
