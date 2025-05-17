@@ -3,6 +3,7 @@ use actix_web::{
     http::{header, StatusCode},
 };
 use awc::Client;
+use tracing::{error, debug, instrument};
 
 /// Environment variable for the target service URL
 pub const TARGET_SERVICE_ENV: &str = "RUNEGATE_TARGET_SERVICE";
@@ -10,6 +11,7 @@ pub const TARGET_SERVICE_ENV: &str = "RUNEGATE_TARGET_SERVICE";
 const DEFAULT_TARGET_SERVICE: &str = "http://127.0.0.1:7860";
 
 /// Proxy a request to the target service
+#[instrument(skip(body), fields(method = %req.method(), path = %req.uri().path(), query = %req.uri().query().unwrap_or(""), client_ip = %req.connection_info().realip_remote_addr().unwrap_or("unknown")))]
 pub async fn proxy_request(req: HttpRequest, body: web::Bytes) -> Result<HttpResponse, Error> {
     let target_url = get_target_service_url();
     
@@ -17,6 +19,8 @@ pub async fn proxy_request(req: HttpRequest, body: web::Bytes) -> Result<HttpRes
     let path = req.uri().path();
     let query = req.uri().query().map_or_else(String::new, |q| format!("?{}", q));
     let forwarded_url = format!("{}{}{}", target_url, path, query);
+    
+    debug!(target_url = %target_url, forwarded_url = %forwarded_url, "Proxying request");
     
     // Create a client to forward the request
     let client = Client::default();
@@ -50,9 +54,11 @@ pub async fn proxy_request(req: HttpRequest, body: web::Bytes) -> Result<HttpRes
     
     // Send the request to the target service
     let mut forwarded_res = forwarded_req.await.map_err(|e| {
-        eprintln!("Forwarding error: {}", e);
+        error!(error = %e, "Forwarding error to target service");
         actix_web::error::ErrorBadGateway(e)
     })?;
+    
+    debug!(status = %forwarded_res.status(), "Received response from target service");
     
     // Build a response to send back to the client
     let mut client_res = HttpResponse::build(StatusCode::from_u16(
@@ -70,15 +76,18 @@ pub async fn proxy_request(req: HttpRequest, body: web::Bytes) -> Result<HttpRes
     
     // Get the response body
     let body = forwarded_res.body().await.map_err(|e| {
-        eprintln!("Body error: {}", e);
+        error!(error = %e, "Failed to read response body from target service");
         actix_web::error::ErrorBadGateway(e)
     })?;
+    
+    debug!(body_size = body.len(), "Returning response to client");
     
     // Return the complete response
     Ok(client_res.body(body))
 }
 
 /// Gets the target service URL from environment or uses default
+#[instrument]
 fn get_target_service_url() -> String {
     std::env::var(TARGET_SERVICE_ENV).unwrap_or_else(|_| DEFAULT_TARGET_SERVICE.to_string())
 }

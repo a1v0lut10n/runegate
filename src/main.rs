@@ -1,4 +1,5 @@
-use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, Responder, middleware, Error};
+use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, Responder, Error};
+use tracing::{info, warn, instrument};
 use actix_session::{Session, SessionMiddleware, storage::CookieSessionStore};
 use actix_web::cookie::{Key, SameSite};
 use actix_web::http::header;
@@ -11,7 +12,9 @@ use runegate::email::EmailConfig;
 use runegate::send_magic_link::send_magic_link;
 use runegate::auth::{generate_magic_link, verify_token, JWT_SECRET_ENV};
 use runegate::proxy::{proxy_request, TARGET_SERVICE_ENV};
-// Middleware impl will be added later
+use runegate::logging;
+use runegate::middleware::AuthMiddleware;
+use tracing_actix_web::TracingLogger;
 
 // Application configuration constants
 const SESSION_KEY_ENV: &str = "RUNEGATE_SESSION_KEY";
@@ -31,11 +34,13 @@ struct AppConfig {
 }
 
 /// Health check endpoint
+#[instrument(name = "health_check", skip_all)]
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json("Runegate is running")
 }
 
 /// Login endpoint that sends a magic link via email
+#[instrument(name = "login", skip(app_config), fields(email = %login_data.email))]
 async fn login(login_data: web::Json<LoginRequest>, app_config: web::Data<AppConfig>) -> impl Responder {
     let email = &login_data.email;
     let base_url = &app_config.base_url;
@@ -57,6 +62,7 @@ async fn login(login_data: web::Json<LoginRequest>, app_config: web::Data<AppCon
 }
 
 /// Auth endpoint that verifies a token from the magic link
+#[instrument(name = "auth", skip(session))]
 async fn auth(req: HttpRequest, session: actix_session::Session) -> impl Responder {
     // Extract token from query string
     let token = match req.query_string().split('=').nth(1) {
@@ -83,32 +89,10 @@ async fn auth(req: HttpRequest, session: actix_session::Session) -> impl Respond
     }
 }
 
-/// Middleware to check if user is authenticated
-async fn auth_middleware(req: HttpRequest, session: actix_session::Session) -> Result<HttpResponse, Error> {
-    // Skip auth check for login and auth endpoints
-    let path = req.path();
-    if path == "/login" || path == "/health" || path.starts_with("/auth") {
-        return Ok(HttpResponse::Ok().finish()); // Allow access to public endpoints
-    }
-    
-    // Check if user is authenticated
-    match session.get::<bool>("authenticated") {
-        Ok(Some(true)) => Ok(HttpResponse::Ok().finish()), // User is authenticated, allow access
-        _ => {
-            // Redirect to login page
-            Ok(HttpResponse::Found()
-                .append_header((header::LOCATION, "/login"))
-                .finish())
-        }
-    }
-}
-
-/// Proxy handler for all authenticated requests
-async fn proxy(req: HttpRequest, body: web::Bytes) -> Result<HttpResponse, Error> {
-    proxy_request(req, body).await
-}
+// The auth middleware functionality is now implemented in src/middleware.rs
 
 /// Authentication check and proxy handler
+#[instrument(name = "auth_check_and_proxy", skip(body, session), fields(path = %req.path(), method = %req.method()))]
 async fn auth_check_and_proxy(req: HttpRequest, body: web::Bytes, session: Session) -> Result<HttpResponse, Error> {
     // Check if user is authenticated
     let is_authenticated = session.get::<bool>("authenticated").unwrap_or(None).unwrap_or(false);
@@ -155,16 +139,33 @@ async fn main() -> std::io::Result<()> {
     // Load .env file if present
     dotenvy::dotenv().ok();
     
-    // Print configuration information
-    println!("🚪 Starting Runegate auth proxy...");
+    // Configure logging based on RUNEGATE_LOG_FORMAT environment variable
+    // This can be set in .env file or directly in the environment
+    // Default is "console", alternatives are "json"
+    let log_format = std::env::var("RUNEGATE_LOG_FORMAT")
+        .unwrap_or_else(|_| "console".to_string());
+    
+    // Initialize logging based on the format setting
+    if log_format == "json" {
+        logging::init_tracing("runegate", std::io::stdout);
+        // Now we can log after initialization
+        info!("Using JSON structured logging");
+    } else {
+        logging::init_console_tracing();
+        // Now we can log after initialization
+        info!("Using console logging for development");
+    }
+    
+    // Log configuration information
+    info!("🚪 Starting Runegate auth proxy...");
     if std::env::var(JWT_SECRET_ENV).is_err() {
-        println!("⚠️  No JWT secret set in environment. Using development default.");
+        warn!("⚠️  No JWT secret set in environment. Using development default.");
     }
     if std::env::var(SESSION_KEY_ENV).is_err() {
-        println!("⚠️  No session key set in environment. Using development default.");
+        warn!("⚠️  No session key set in environment. Using development default.");
     }
     if std::env::var(TARGET_SERVICE_ENV).is_err() {
-        println!("ℹ️  No target service URL set. Defaulting to localhost:7870.");
+        info!("ℹ️  No target service URL set. Defaulting to localhost:7870.");
     }
     
     // Load application configuration
@@ -176,7 +177,7 @@ async fn main() -> std::io::Result<()> {
     
     HttpServer::new(move || {
         App::new()
-            .wrap(middleware::Logger::default())
+            .wrap(TracingLogger::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
                     .cookie_secure(false)  // Set to true in production with HTTPS
@@ -184,6 +185,7 @@ async fn main() -> std::io::Result<()> {
                     .cookie_same_site(SameSite::Lax)
                     .build()
             )
+            .wrap(AuthMiddleware::new())
             .app_data(app_config.clone())
             // API Endpoints
             .service(web::resource("/health").route(web::get().to(health_check)))
