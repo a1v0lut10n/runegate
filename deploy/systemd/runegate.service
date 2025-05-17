@@ -1,0 +1,42 @@
+[Unit]
+Description=Runegate Identity Proxy
+Documentation=https://github.com/a1v0lut10n/runegate
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=runegate
+Group=runegate
+# Set working directory to where config files are located
+WorkingDirectory=/opt/runegate
+# Environment file for configuration
+EnvironmentFile=/etc/runegate/runegate.env
+# Path to the executable
+ExecStart=/opt/runegate/bin/runegate
+# Restart policy
+Restart=on-failure
+RestartSec=5
+# Set reasonable memory limits
+MemoryHigh=200M
+MemoryMax=300M
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/log/runegate /var/lib/runegate
+ReadOnlyPaths=/etc/runegate
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=runegate
+
+[Install]
+WantedBy=multi-user.target
