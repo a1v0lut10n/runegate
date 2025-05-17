@@ -12,6 +12,7 @@ It authenticates users without passwords by sending them time-limited login link
 - 🔐 JWT-based session validation
 - 🔁 Stateless authentication flow
 - 🔒 Secure-by-default with token expiry
+- ⏱️ Configurable magic link expiry for longer sessions
 - ⚡ Built on `actix-web` for high performance
 - 📊 Structured logging with `tracing` for observability
 - 🛡️ Configurable rate limiting for enhanced security
@@ -119,8 +120,10 @@ This link is valid for 15 minutes."""
 
 1. Access any protected resource and you'll be redirected to the login page
 2. Enter your email to receive a magic link
-3. Check your email and click the link
+3. Check your email and click the link (valid for a configurable period, default: 15 minutes)
 4. You'll be authenticated and redirected to the protected resource
+
+Magic links expire after a configurable period (set via `RUNEGATE_MAGIC_LINK_EXPIRY` environment variable). For applications requiring longer sessions, such as video editing or transcription tools, you can extend this period to accommodate extended user workflows without interruption.
 
 ### Environment Variables
 
@@ -138,6 +141,9 @@ RUNEGATE_TARGET_SERVICE=http://your-service-url
 
 # Base URL for magic links (defaults to http://localhost:7870)
 RUNEGATE_BASE_URL=https://your-public-url
+
+# Magic link expiry time in minutes (defaults to 15)
+RUNEGATE_MAGIC_LINK_EXPIRY=60  # Set longer for apps requiring extended sessions
 
 # Rate limiting configuration
 RUNEGATE_RATE_LIMIT_ENABLED=true  # Enable/disable all rate limiting (default: true)
