@@ -14,6 +14,7 @@ It authenticates users without passwords by sending them time-limited login link
 - 🔒 Secure-by-default with token expiry
 - ⚡ Built on `actix-web` for high performance
 - 📊 Structured logging with `tracing` for observability
+- 🛡️ Configurable rate limiting for enhanced security
 
 ---
 
@@ -68,7 +69,19 @@ This separation keeps your internal service secure while Runegate handles all th
 
 ## ⚙️ Configuration
 
-Set up `config/email.toml` with your Gmail SMTP and message template:
+### Email Setup
+
+Copy the example configuration file to set up your email settings:
+
+```bash
+# Copy the example config to create your own configuration
+cp config/email.toml.example config/email.toml
+
+# Edit the file with your credentials
+editor config/email.toml
+```
+
+Then update `config/email.toml` with your Gmail SMTP credentials and message template:
 
 ```toml
 smtp_host = "smtp.gmail.com"
@@ -85,7 +98,7 @@ body_template = """Click to log in:
 This link is valid for 15 minutes."""
 ```
 
-> 💡 Use [Gmail App Passwords](https://support.google.com/accounts/answer/185833) with 2FA enabled.
+> 💡 Use [Gmail App Passwords](https://support.google.com/accounts/answer/185833) with 2FA enabled for better security.
 
 ---
 
@@ -125,6 +138,12 @@ RUNEGATE_TARGET_SERVICE=http://your-service-url
 
 # Base URL for magic links (defaults to http://localhost:7870)
 RUNEGATE_BASE_URL=https://your-public-url
+
+# Rate limiting configuration
+RUNEGATE_RATE_LIMIT_ENABLED=true  # Enable/disable all rate limiting (default: true)
+RUNEGATE_LOGIN_RATE_LIMIT=5       # Login attempts per minute per IP address (default: 5)
+RUNEGATE_EMAIL_COOLDOWN=300       # Seconds between magic link requests per email (default: 300)
+RUNEGATE_TOKEN_RATE_LIMIT=10      # Token verification attempts per minute per IP (default: 10)
 
 # Logging level (defaults to runegate=debug,actix_web=info)
 RUST_LOG=runegate=debug,actix_web=info,awc=debug
@@ -172,6 +191,110 @@ Runegate supports two logging formats:
 
 The logging format can be configured using the `RUNEGATE_LOG_FORMAT` environment variable, which can be set in your `.env` file or directly in the environment. This eliminates the need to recompile when switching formats.
 
+---
+
+## 🛡️ Rate Limiting
+
+Runegate implements a multi-layered rate limiting system to protect against brute force attacks, abuse, and denial of service attempts. Three distinct rate limiting mechanisms work together to secure the authentication process:
+
+### Rate Limiting Mechanisms
+
+1. **Per-IP Login Rate Limiting**: Caps the number of login attempts from a single IP address
+   - Prevents brute force attacks on the login endpoint
+   - Default: 5 attempts per minute per IP address
+
+2. **Per-Email Cooldown**: Enforces a cooldown period between magic link requests for the same email
+   - Prevents abuse and email flooding
+   - Default: 300 seconds (5 minutes) between requests
+
+3. **Token Verification Rate Limiting**: Restricts the number of token verification attempts per IP
+   - Protects against brute force attempts to guess valid tokens
+   - Default: 10 attempts per minute per IP address
+
+### HTTP Response Behavior
+
+When rate limits are exceeded, Runegate responds with:
+
+- **HTTP 429 Too Many Requests** status code
+- **X-RateLimit-Exceeded** header identifying the limit type ("IP" or "Email")
+- **X-RateLimit-Reset** header indicating seconds until the limit resets
+- JSON response with a descriptive message about the rate limiting
+
+### Configuration
+
+Rate limiting can be configured via environment variables:
+
+```bash
+# Enable or disable all rate limiting (true/false)
+RUNEGATE_RATE_LIMIT_ENABLED=true
+
+# Number of login attempts allowed per minute per IP address
+RUNEGATE_LOGIN_RATE_LIMIT=5
+
+# Cooldown period in seconds between magic link requests per email
+RUNEGATE_EMAIL_COOLDOWN=300
+
+# Number of token verification attempts allowed per minute per IP
+RUNEGATE_TOKEN_RATE_LIMIT=10
+```
+
+### Testing Rate Limiting
+
+Runegate includes both unit tests and integration tests for rate limiting features:
+
+#### Running Unit Tests
+
+```bash
+# Test rate limiting components in isolation
+cargo test --test rate_limit_tests
+```
+
+#### Running Integration Tests
+
+Automated testing scripts make it easy to test rate limiting against a running server:
+
+```bash
+# Test all rate limiting features
+./scripts/run_integration_tests.sh
+
+# Test only email cooldown feature
+./scripts/run_integration_tests.sh test_email_cooldown_rate_limiting
+
+# Test with rate limiting disabled
+RUNEGATE_RATE_LIMIT_ENABLED=false ./scripts/run_integration_tests.sh test_rate_limit_disabled
+```
+
+#### Manual Testing
+
+You can also manually test rate limiting by making repeated requests to endpoints:
+
+```bash
+# Test login rate limiting
+for i in {1..10}; do \
+  curl -X POST -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com"}' \
+  http://localhost:7870/login; \
+  echo ""; \
+done
+
+# Test token verification rate limiting
+for i in {1..15}; do \
+  curl http://localhost:7870/auth?token=invalid_token; \
+  echo ""; \
+done
+```
+
+### Implementation Details
+
+The rate limiting implementation uses:
+
+- **LRU Cache**: Efficiently tracks email request timestamps
+- **In-memory Maps**: Tracks IP-based request counts
+- **Time-windowed Approach**: Rate limits reset after the configured period
+- **No External Dependencies**: Self-contained implementation for simplicity
+
+All rate limiting state is stored in memory and will reset when the service restarts.
+
 **In your `.env` file:**
 
 ```env
@@ -188,8 +311,51 @@ RUNEGATE_LOG_FORMAT=json
 ```bash
 # Run with console logging (default)
 RUST_LOG=info cargo run
+```
 
-# Run with JSON logging (for production/log aggregation)
+### Rate Limiting and Security
+
+Runegate implements three types of rate limiting mechanisms to protect against abuse:
+
+1. **IP-based Login Rate Limiting** - Prevents brute force login attempts by limiting the number of login requests from the same IP address.
+   - Default: 5 attempts per minute per IP address
+   - HTTP 429 response when limit exceeded
+   - X-RateLimit-* headers included in responses
+
+2. **Email-based Cooldown** - Prevents sending multiple magic links to the same email address in quick succession.
+   - Default: 300 seconds (5 minutes) cooldown between requests for the same email
+   - Remaining time is returned in error response
+   - Prevents email flooding and resource exhaustion
+
+3. **Token Verification Rate Limiting** - Limits attempts to verify auth tokens from the same IP address.
+   - Default: 10 verification attempts per minute per IP address
+   - Prevents brute-forcing of JWT tokens
+
+**Configuring Rate Limiting:**
+
+Rate limits can be adjusted or disabled through environment variables:
+
+```env
+# Enable or disable all rate limiting
+RUNEGATE_RATE_LIMIT_ENABLED=true  # Set to false to disable all rate limiting
+
+# Configure limits
+RUNEGATE_LOGIN_RATE_LIMIT=5       # Login attempts per minute per IP
+RUNEGATE_EMAIL_COOLDOWN=300       # Seconds between magic links for same email
+RUNEGATE_TOKEN_RATE_LIMIT=10      # Token verification attempts per minute
+```
+
+**Testing Mode:**
+
+For development and testing, you can disable rate limiting entirely:
+
+```env
+RUNEGATE_RATE_LIMIT_ENABLED=false
+```
+
+### JSON Logging for Production
+
+```bash
 RUST_LOG=info RUNEGATE_LOG_FORMAT=json cargo run > runegate.log
 
 # For Docker or other environments
@@ -225,7 +391,7 @@ cargo run --example test_target_service
 - [x] Reverse proxy handler with session check
 - [x] JWT-based session management
 - [x] Static login page UI
-- [ ] Rate limiting and logging
+- [x] Rate limiting and logging
 - [ ] Middleware implementation for route protection
 - [ ] Extended error handling and logging
 - [ ] Production deployment guides

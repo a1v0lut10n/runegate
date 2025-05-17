@@ -7,6 +7,7 @@ use actix_files::Files;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::fs;
+use std::sync::Arc;
 
 use runegate::email::EmailConfig;
 use runegate::send_magic_link::send_magic_link;
@@ -14,6 +15,7 @@ use runegate::auth::{generate_magic_link, verify_token, JWT_SECRET_ENV};
 use runegate::proxy::{proxy_request, TARGET_SERVICE_ENV};
 use runegate::logging;
 use runegate::middleware::AuthMiddleware;
+use runegate::rate_limit::RateLimiters;
 use tracing_actix_web::TracingLogger;
 
 // Application configuration constants
@@ -40,10 +42,37 @@ async fn health_check() -> impl Responder {
 }
 
 /// Login endpoint that sends a magic link via email
-#[instrument(name = "login", skip(app_config), fields(email = %login_data.email))]
-async fn login(login_data: web::Json<LoginRequest>, app_config: web::Data<AppConfig>) -> impl Responder {
+#[instrument(name = "login", skip(app_config, rate_limiters), fields(email = %login_data.email))]
+async fn login(
+    login_data: web::Json<LoginRequest>, 
+    app_config: web::Data<AppConfig>,
+    rate_limiters: web::Data<Arc<RateLimiters>>,
+    req: HttpRequest
+) -> impl Responder {
     let email = &login_data.email;
     let base_url = &app_config.base_url;
+    
+    // Get the client IP address
+    let client_ip = req.connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
+    
+    // Check if IP is rate limited for login attempts
+    if !rate_limiters.login_limiter.check_ip(&client_ip) {
+        return HttpResponse::TooManyRequests()
+            .append_header(("X-RateLimit-Exceeded", "IP"))
+            .json("Too many login attempts from this IP address. Please try again later.");
+    }
+    
+    // Check if this email is rate-limited (cooldown between magic link requests)
+    if let Some(remaining_seconds) = rate_limiters.email_limiter.check_email(email) {
+        warn!("Rate limited attempt to send magic link to {}, cooldown: {} seconds", email, remaining_seconds);
+        return HttpResponse::TooManyRequests()
+            .append_header(("X-RateLimit-Exceeded", "Email"))
+            .append_header(("X-RateLimit-Reset", remaining_seconds.to_string()))
+            .json(format!("Please wait {} seconds before requesting another magic link", remaining_seconds));
+    }
     
     // Generate a magic link with JWT token
     let login_url = generate_magic_link(email, base_url, MAGIC_LINK_EXPIRY_MINUTES);
@@ -51,45 +80,60 @@ async fn login(login_data: web::Json<LoginRequest>, app_config: web::Data<AppCon
     // Send the email
     match send_magic_link(&app_config.email_config, email, &login_url) {
         Ok(_) => {
-            println!("📧 Magic link sent to {}", email);
+            info!("📧 Magic link sent to {}", email);
             HttpResponse::Ok().json(format!("Magic link sent to {}", email))
         },
         Err(e) => {
-            eprintln!("Failed to send magic link: {}", e);
+            warn!("Failed to send magic link: {}", e);
             HttpResponse::InternalServerError().json("Failed to send login email")
         }
     }
 }
 
 /// Auth endpoint that verifies a token from the magic link
-#[instrument(name = "auth", skip(session))]
-async fn auth(req: HttpRequest, session: actix_session::Session) -> impl Responder {
-    // Extract token from query string
-    let token = match req.query_string().split('=').nth(1) {
-        Some(t) => t,
-        None => return HttpResponse::BadRequest().json("Missing token")
-    };
+#[instrument(name = "auth", skip(session, rate_limiters))]
+async fn auth(
+    req: HttpRequest, 
+    session: actix_session::Session,
+    rate_limiters: web::Data<Arc<RateLimiters>>
+) -> impl Responder {
+    // Get the client IP address for rate limiting
+    let client_ip = req.connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
     
-    // Verify the token
+    // Check if the IP is rate limited for token verification attempts
+    if !rate_limiters.token_limiter.check_ip(&client_ip) {
+        return HttpResponse::TooManyRequests()
+            .append_header(("X-RateLimit-Exceeded", "IP"))
+            .json("Too many token verification attempts from this IP. Please try again later.");
+    }
+
+    // Check for the token query parameter
+    let token = match req.query_string().strip_prefix("token=") {
+        Some(token) => token,
+        None => return HttpResponse::BadRequest().json("No token provided"),
+    };
+
+    // Verify the token and extract user info
     match verify_token(token) {
         Ok(email) => {
-            // Set session data
-            session.insert("user_email", email.clone()).ok();
+            // If token is valid, mark the session as authenticated
             session.insert("authenticated", true).ok();
-            
+            session.insert("email", email.clone()).ok();
             // Redirect to the home page after successful auth
             HttpResponse::Found()
                 .append_header((header::LOCATION, "/"))
-                .finish()
+                .json(format!("Authentication successful for {}", email))
         },
-        Err(e) => {
-            eprintln!("Token verification failed: {}", e);
+        Err(err) => {
+            warn!("Token validation error: {}", err);
             HttpResponse::Unauthorized().json("Invalid or expired login link")
         }
     }
 }
 
-// The auth middleware functionality is now implemented in src/middleware.rs
 
 /// Authentication check and proxy handler
 #[instrument(name = "auth_check_and_proxy", skip(body, session), fields(path = %req.path(), method = %req.method()))]
@@ -156,6 +200,9 @@ async fn main() -> std::io::Result<()> {
         info!("Using console logging for development");
     }
     
+    // Initialize rate limiters
+    let rate_limiters = Arc::new(RateLimiters::new());
+    
     // Log configuration information
     info!("🚪 Starting Runegate auth proxy...");
     if std::env::var(JWT_SECRET_ENV).is_err() {
@@ -175,6 +222,9 @@ async fn main() -> std::io::Result<()> {
     // Set up the session key for cookies
     let session_key = get_session_key();
     
+    // Create shared data for rate limiters
+    let rate_limiters_data = web::Data::new(rate_limiters.clone());
+    
     HttpServer::new(move || {
         App::new()
             .wrap(TracingLogger::default())
@@ -185,8 +235,12 @@ async fn main() -> std::io::Result<()> {
                     .cookie_same_site(SameSite::Lax)
                     .build()
             )
+            // No rate limiting middleware - we'll use direct checks in the handlers
+            // Auth middleware
             .wrap(AuthMiddleware::new())
+            // App data
             .app_data(app_config.clone())
+            .app_data(rate_limiters_data.clone())
             // API Endpoints
             .service(web::resource("/health").route(web::get().to(health_check)))
             .service(web::resource("/login").route(web::post().to(login)))

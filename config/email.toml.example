@@ -1,0 +1,12 @@
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+smtp_user = "your_email@gmail.com"
+smtp_pass = "your_app_password_here"
+
+from_address = "Runegate <your_email@gmail.com>"
+subject = "Login to Runegate"
+body_template = """Click the link to sign in:
+
+{login_url}
+
+This link is valid for 15 minutes."""

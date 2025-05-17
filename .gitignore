@@ -2,3 +2,5 @@
 /config/email.toml
 /cookies.txt
 *.code-workspace
+.test_server_pid
+*.log
