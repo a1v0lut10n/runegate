@@ -28,3 +28,7 @@ governor = "0.6.0"
 actix-governor = "0.5.0"
 fxhash = "0.2.1"  # Fast hashing for keys
 lru = "0.12.1"    # LRU cache for rate limiting storage
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
