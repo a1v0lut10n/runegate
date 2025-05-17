@@ -69,6 +69,7 @@ async fn login(
     if let Some(remaining_seconds) = rate_limiters.email_limiter.check_email(email) {
         warn!("Rate limited attempt to send magic link to {}, cooldown: {} seconds", email, remaining_seconds);
         return HttpResponse::TooManyRequests()
+            .append_header(("X-RateLimit-Exceeded", "Email"))
             .append_header(("X-RateLimit-Reset", remaining_seconds.to_string()))
             .json(format!("Please wait {} seconds before requesting another magic link", remaining_seconds));
     }
