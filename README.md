@@ -379,7 +379,7 @@ cargo run --example test_target_service
 - [x] Reverse proxy handler with session check
 - [x] JWT-based session management
 - [x] Static login page UI
-- [ ] Rate limiting and logging
+- [x] Rate limiting and logging
 - [ ] Middleware implementation for route protection
 - [ ] Extended error handling and logging
 - [ ] Production deployment guides
