@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use runegate::email::EmailConfig;
 use runegate::send_magic_link::send_magic_link;
-use runegate::auth::{generate_magic_link, verify_token, JWT_SECRET_ENV};
+use runegate::auth::{generate_magic_link, verify_token, get_magic_link_expiry, JWT_SECRET_ENV};
 use runegate::proxy::{proxy_request, TARGET_SERVICE_ENV};
 use runegate::logging;
 use runegate::middleware::AuthMiddleware;
@@ -22,7 +22,9 @@ use tracing_actix_web::TracingLogger;
 const SESSION_KEY_ENV: &str = "RUNEGATE_SESSION_KEY";
 // Ensure the key is at least 64 bytes for proper security
 const DEFAULT_SESSION_KEY: &[u8] = b"runegate_development_session_key_please_change_this_is_not_secure_enough_for_production_use_a_better_key";
-const MAGIC_LINK_EXPIRY_MINUTES: u64 = 15;
+
+// We'll get the magic link expiry from environment instead of hardcoding it
+// Default is defined in auth.rs as DEFAULT_MAGIC_LINK_EXPIRY
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LoginRequest {
@@ -74,8 +76,12 @@ async fn login(
             .json(format!("Please wait {} seconds before requesting another magic link", remaining_seconds));
     }
     
-    // Generate a magic link with JWT token
-    let login_url = generate_magic_link(email, base_url, MAGIC_LINK_EXPIRY_MINUTES);
+    // Generate a magic link with JWT token using configurable expiry time
+    let expiry_minutes = get_magic_link_expiry();
+    let login_url = generate_magic_link(email, base_url, expiry_minutes);
+    
+    // Log the expiry time for debugging
+    info!("📧 Magic link generated with {} minutes expiry", expiry_minutes);
     
     // Send the email
     match send_magic_link(&app_config.email_config, email, &login_url) {

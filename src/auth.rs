@@ -3,10 +3,13 @@ use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::instrument;
 
-// Environment variable name for JWT secret
+// Environment variable names
 pub const JWT_SECRET_ENV: &str = "RUNEGATE_JWT_SECRET";
-// Default secret if not set in environment (only for development)
+pub const MAGIC_LINK_EXPIRY_ENV: &str = "RUNEGATE_MAGIC_LINK_EXPIRY";
+
+// Default values if not set in environment (only for development)
 const DEFAULT_SECRET: &[u8] = b"runegate_dev_only_secret_please_change_in_production";
+pub const DEFAULT_MAGIC_LINK_EXPIRY: u64 = 15; // Default expiry in minutes
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -59,8 +62,17 @@ pub fn generate_magic_link(email: &str, base_url: &str, expiry_minutes: u64) -> 
 
 /// Gets the JWT secret from environment or uses default
 #[instrument]
-fn get_jwt_secret() -> Vec<u8> {
+pub fn get_jwt_secret() -> Vec<u8> {
     std::env::var(JWT_SECRET_ENV)
         .map(|s| s.into_bytes())
         .unwrap_or_else(|_| DEFAULT_SECRET.to_vec())
+}
+
+/// Gets the magic link expiry time in minutes from environment or uses default
+#[instrument]
+pub fn get_magic_link_expiry() -> u64 {
+    std::env::var(MAGIC_LINK_EXPIRY_ENV)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAGIC_LINK_EXPIRY)
 }
