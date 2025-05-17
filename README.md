@@ -69,7 +69,19 @@ This separation keeps your internal service secure while Runegate handles all th
 
 ## ⚙️ Configuration
 
-Set up `config/email.toml` with your Gmail SMTP and message template:
+### Email Setup
+
+Copy the example configuration file to set up your email settings:
+
+```bash
+# Copy the example config to create your own configuration
+cp config/email.toml.example config/email.toml
+
+# Edit the file with your credentials
+editor config/email.toml
+```
+
+Then update `config/email.toml` with your Gmail SMTP credentials and message template:
 
 ```toml
 smtp_host = "smtp.gmail.com"
@@ -86,7 +98,7 @@ body_template = """Click to log in:
 This link is valid for 15 minutes."""
 ```
 
-> 💡 Use [Gmail App Passwords](https://support.google.com/accounts/answer/185833) with 2FA enabled.
+> 💡 Use [Gmail App Passwords](https://support.google.com/accounts/answer/185833) with 2FA enabled for better security.
 
 ---
 
