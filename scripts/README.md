@@ -33,7 +33,7 @@ The script will:
 
 1. Extract your current branch name
 2. Generate a formatted title from your branch name
-3. Collect all commit messages between the base branch and your current branch 
+3. Collect all commit messages between the base branch and your current branch
 4. Create a PR description with commit details and a checklist
 5. Show you a preview before submitting
 6. Create the PR using GitHub CLI

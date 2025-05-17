@@ -387,6 +387,37 @@ cargo run --example test_jwt_validation your@email.com
 cargo run --example test_target_service
 ```
 
+### Systemd Deployment
+
+Runegate can be deployed as a systemd service on Debian-based systems with our automated installation system:
+
+```bash
+# Clone the repository
+git clone https://github.com/a1v0lut10n/runegate.git
+cd runegate
+
+# Run the installation script (as root)
+sudo ./deploy/install.sh
+
+# Configure your environment
+sudo nano /etc/runegate/runegate.env
+sudo nano /etc/runegate/config/email.toml
+
+# Start and enable the service
+sudo systemctl start runegate
+sudo systemctl enable runegate
+```
+
+The systemd deployment includes:
+
+- Dedicated low-privilege `runegate` user
+- Security hardening with `ProtectSystem=strict`
+- Automatic restart on failure
+- Journald integration for logging
+- Standard Linux directory structure
+
+See the [deployment guide](deploy/README.md) for complete documentation.
+
 ---
 
 ## 🔒 Roadmap
@@ -400,7 +431,7 @@ cargo run --example test_target_service
 - [x] Rate limiting and logging
 - [ ] Middleware implementation for route protection
 - [ ] Extended error handling and logging
-- [ ] Production deployment guides
+- [x] Production deployment guides
 
 ---
 
