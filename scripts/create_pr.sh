@@ -60,8 +60,8 @@ done
 
 # Add checklist
 PR_BODY+="## Checklist\n\n"
-PR_BODY+="- [ ] Documentation updated\n\n"
-PR_BODY+="- [ ] Tests added/updated\n\n"
+PR_BODY+="- [ ] Documentation updated\n"
+PR_BODY+="- [ ] Tests added/updated\n"
 PR_BODY+="- [ ] Code reviewed\n\n"
 
 # Create temp file for PR body
