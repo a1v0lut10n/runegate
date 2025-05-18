@@ -513,3 +513,9 @@ See the [deployment guide](deploy/README.md) for complete documentation.
 ---
 
 Runegate is designed for simplicity and security when exposing private tools to trusted users — with no passwords to manage.
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
+
+Copyright 2025 Aivolution GmbH

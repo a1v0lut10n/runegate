@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use runegate::email::EmailConfig;
 use runegate::send_magic_link::send_magic_link;
 

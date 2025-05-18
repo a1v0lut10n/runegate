@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Runegate Installation Script for Debian-based systems
 # This script will:
 # 1. Install required dependencies

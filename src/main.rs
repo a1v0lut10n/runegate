@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, Responder, Error};
 use tracing::{info, warn, instrument};
 use actix_session::{Session, SessionMiddleware, storage::CookieSessionStore};

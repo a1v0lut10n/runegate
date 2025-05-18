@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};

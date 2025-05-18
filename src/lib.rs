@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 pub mod email;
 pub mod send_magic_link;
 pub mod auth;

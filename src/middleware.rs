@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use actix_web::{dev::{Service, ServiceRequest, ServiceResponse, Transform}, Error, http::header, HttpResponse};
 use actix_web::body::EitherBody;
 use actix_session::SessionExt;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use lettre::message::{header, Mailbox, Message};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{SmtpTransport, Transport};
