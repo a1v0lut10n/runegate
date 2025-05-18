@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Script to generate secure secrets for Runegate
 # Generates JWT secret and session key
 

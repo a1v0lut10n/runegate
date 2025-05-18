@@ -1,7 +1,12 @@
 [package]
 name = "runegate"
 version = "0.1.0"
+authors = ["Aivolution GmbH <ai@aivolution.ai>"]
+license = "Apache-2.0"
 edition = "2024"
+readme = "README.md"
+description = "Lightweight Rust-based identity proxy"
+repository = "https://github.com/a1v0lut10n/runegate"
 
 [dependencies]
 actix-web = { version = "4.11.0", features = ["cookies"] }

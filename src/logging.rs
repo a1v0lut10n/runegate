@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use std::env;
 use tracing::subscriber::set_global_default;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};

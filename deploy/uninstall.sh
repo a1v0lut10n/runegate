@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Runegate Uninstallation Script for Debian-based systems
 # This script will:
 # 1. Stop and disable the systemd service

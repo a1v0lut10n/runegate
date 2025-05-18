@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use actix_web::{web, App, HttpServer, Responder, HttpResponse};
 
 async fn index() -> impl Responder {

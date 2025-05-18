@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Script to gracefully shut down a running Runegate server
 
 # Print script banner

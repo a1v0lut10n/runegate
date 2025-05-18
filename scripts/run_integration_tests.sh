@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Script to start server, run integration tests, and shut down server
 
 # Print script banner

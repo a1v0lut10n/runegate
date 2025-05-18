@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Script to create a GitHub PR with commit messages
 
 # Print banner

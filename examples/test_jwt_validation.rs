@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 use runegate::auth::{create_token, verify_token};
 use std::env;
 
