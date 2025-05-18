@@ -65,6 +65,8 @@ This directory contains scripts and configuration files to deploy Runegate as a 
    sudo nano /etc/runegate/config/email.toml
    ```
 
+   > **Important**: The email configuration path must be at `/etc/runegate/config/email.toml`. This is the path the application checks in production deployments.
+
 4. Start and enable the service:
 
    ```bash
