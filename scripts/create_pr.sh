@@ -42,9 +42,21 @@ PR_BODY+="This PR implements the **$FEATURE_NAME** feature.\n\n"
 
 PR_BODY+="## Commit History\n\n"
 
-# Get all commits between base branch and current branch
-COMMITS=$(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --pretty=format:"- **%s**%n  %b%n")
-PR_BODY+="$COMMITS\n\n"
+# Get all commits between base branch and current branch with proper formatting
+PR_BODY+="$(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --pretty=format:"- **%s**\n" | sed 's/^/  /')\n\n"
+
+# For each commit, add its body with proper formatting if it has a body
+for COMMIT_HASH in $(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --format="%H"); do
+    # Get commit body (skipping the subject line)
+    COMMIT_BODY=$(git log -1 --format="%b" $COMMIT_HASH | grep -v "^$")
+    
+    # If commit has a body, format it as a nested list with proper indentation
+    if [ ! -z "$COMMIT_BODY" ]; then
+        # Format each line of the body as a nested bullet point
+        FORMATTED_BODY=$(echo "$COMMIT_BODY" | sed 's/^- /  - /' | sed 's/^/  /')
+        PR_BODY+="$FORMATTED_BODY\n\n"
+    fi
+done
 
 # Add checklist
 PR_BODY+="## Checklist\n\n"
