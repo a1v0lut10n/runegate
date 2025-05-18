@@ -43,13 +43,14 @@ PR_BODY+="This PR implements the **$FEATURE_NAME** feature.\n\n"
 PR_BODY+="## Commit History\n\n"
 
 # Get all commits between base branch and current branch
-COMMITS=$(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --pretty=format:"- **%s**%n  %b%n")
-PR_BODY+="$COMMITS\n\n"
+# Use double newlines between each commit to ensure proper bullet point formatting in GitHub
+COMMITS=$(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --pretty=format:"- **%s**%n  %b%n%n")
+PR_BODY+="$COMMITS\n"
 
 # Add checklist
 PR_BODY+="## Checklist\n\n"
-PR_BODY+="- [ ] Documentation updated\n"
-PR_BODY+="- [ ] Tests added/updated\n"
+PR_BODY+="- [ ] Documentation updated\n\n"
+PR_BODY+="- [ ] Tests added/updated\n\n"
 PR_BODY+="- [ ] Code reviewed\n\n"
 
 # Create temp file for PR body
