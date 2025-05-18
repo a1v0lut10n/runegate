@@ -19,8 +19,9 @@ echo "JWT Secret:"
 echo "$JWT_SECRET"
 echo ""
 
-# Generate session key (32 random bytes, base64 encoded)
-SESSION_KEY=$(openssl rand -base64 32 | tr -d '\n')
+# Generate session key (64 random bytes, hex encoded - required for cookie crate)
+# Note: Cookie crate requires at least 64 bytes of raw entropy, encoded as 128 hex chars
+SESSION_KEY=$(openssl rand -hex 64 | tr -d '\n')
 echo "Session Key:"
 echo "$SESSION_KEY"
 echo ""

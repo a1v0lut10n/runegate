@@ -80,21 +80,48 @@ if [ -d "$REPO_DIR/static" ]; then
     cp -r "$REPO_DIR/static/"* "$INSTALL_DIR/static/"
 fi
 
-# Create configuration files
-if [ -f "$REPO_DIR/.env.example" ]; then
-    cp "$REPO_DIR/.env.example" "$CONFIG_DIR/runegate.env"
-    echo "# Copied from .env.example - Modify for your environment" > "$CONFIG_DIR/runegate.env"
-    cat "$REPO_DIR/.env.example" >> "$CONFIG_DIR/runegate.env"
+# Handle environment configuration
+if [ ! -f "$CONFIG_DIR/runegate.env" ]; then
+    # First-time installation: Create new environment file
+    if [ -f "$REPO_DIR/.env.example" ]; then
+        echo "Creating new environment configuration from example..."
+        echo "# Copied from .env.example - Modify for your environment" > "$CONFIG_DIR/runegate.env"
+        cat "$REPO_DIR/.env.example" >> "$CONFIG_DIR/runegate.env"
+        
+        # Generate secure secrets for new installation
+        echo "Generating secure secrets for JWT and session..."
+        "$REPO_DIR/deploy/generate_secrets.sh" "$CONFIG_DIR/runegate.env"
+    else
+        echo "⚠️  Warning: Environment example not found at $REPO_DIR/.env.example"
+        echo "   Creating minimal environment file"
+        touch "$CONFIG_DIR/runegate.env"
+    fi
+else
+    echo "Preserving existing environment configuration at $CONFIG_DIR/runegate.env"
     
-    # Generate secure secrets and update the environment file
-    echo "Generating secure secrets for JWT and session..."
-    "$REPO_DIR/deploy/generate_secrets.sh" "$CONFIG_DIR/runegate.env"
+    # Check if secrets exist in the file
+    if ! grep -q "RUNEGATE_JWT_SECRET" "$CONFIG_DIR/runegate.env" || ! grep -q "RUNEGATE_SESSION_KEY" "$CONFIG_DIR/runegate.env"; then
+        echo "Adding missing secrets to existing environment file..."
+        "$REPO_DIR/deploy/generate_secrets.sh" "$CONFIG_DIR/runegate.env"
+    fi
 fi
 
-# Copy email configuration example
-if [ -f "$REPO_DIR/config/email.toml.example" ]; then
-    mkdir -p "$CONFIG_DIR/config"
+# Handle email configuration
+mkdir -p "$CONFIG_DIR/config"
+
+# Only create email.toml if it doesn't exist already
+if [ ! -f "$CONFIG_DIR/config/email.toml" ] && [ -f "$REPO_DIR/config/email.toml.example" ]; then
+    echo "Creating new email configuration from example..."
     cp "$REPO_DIR/config/email.toml.example" "$CONFIG_DIR/config/email.toml"
+    # Remind user to update it
+    echo "⚠️  Please update the email configuration at $CONFIG_DIR/config/email.toml"
+else
+    if [ -f "$CONFIG_DIR/config/email.toml" ]; then
+        echo "Preserving existing email configuration at $CONFIG_DIR/config/email.toml"
+    else
+        echo "⚠️  Warning: Email configuration example not found at $REPO_DIR/config/email.toml.example"
+        echo "   You will need to create $CONFIG_DIR/config/email.toml manually"
+    fi
 fi
 
 echo "Step 6: Setting correct permissions..."
