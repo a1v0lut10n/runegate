@@ -422,16 +422,78 @@ See the [deployment guide](deploy/README.md) for complete documentation.
 
 ## 🔒 Roadmap
 
-- [x] Email config loading via TOML
-- [x] Magic link generator
-- [x] Auth endpoint to validate token
-- [x] Reverse proxy handler with session check
-- [x] JWT-based session management
-- [x] Static login page UI
-- [x] Rate limiting and logging
-- [ ] Middleware implementation for route protection
-- [ ] Extended error handling and logging
-- [x] Production deployment guides
+### ✅ Completed
+
+- [x] Email config loading via TOML  
+- [x] Magic link generator  
+- [x] Auth endpoint to validate token  
+- [x] Reverse proxy handler with session check  
+- [x] JWT-based session management  
+- [x] Static login page UI  
+- [x] Rate limiting and logging  
+- [x] Production deployment guides  
+
+---
+
+### 🛠️ In Progress
+
+- [ ] Middleware implementation for route protection  
+- [ ] Extended error handling and logging  
+
+---
+
+### 🔜 Planned Features
+
+#### 🧭 Routing & Service Support
+
+- [ ] Path-based or domain-based routing to support multiple internal apps  
+- [ ] Route configuration in TOML (e.g., `[[routes]]` blocks for services)
+
+#### 🧑‍💼 User Access & Policy
+
+- [ ] Email allowlist and domain restrictions (e.g., `@yourcompany.com`)  
+- [ ] Optional one-time-use vs multi-use tokens with configurable TTLs  
+- [ ] Session validation tied to IP/User-Agent (opt-in)  
+- [ ] Admin API or CLI to manage sessions, revoke tokens, and view active users  
+
+#### ✉️ Email System Enhancements
+
+- [ ] Customizable email templates (HTML and text support)  
+- [ ] Pluggable email backend support (SMTP, SendGrid, Mailgun, SES)  
+- [ ] Email send audit log and error reporting  
+
+#### 🔐 Security & Hardening
+
+- [ ] Enhanced per-IP and per-email rate limiting configuration  
+- [ ] Session signing key rotation support  
+- [ ] Token signature algorithm selection (e.g., HS256 vs EdDSA)  
+- [ ] Optional CAPTCHA integration (e.g., hCaptcha/Cloudflare Turnstile)
+
+#### 📦 DevOps & Deployment
+
+- [ ] Docker image and `docker-compose.yml` support  
+- [ ] Config via environment variables for Docker/Kubernetes  
+- [ ] Helm chart for Kubernetes deployments  
+- [ ] Redis/Postgres storage integration for sessions and link state  
+- [ ] Live reload on config change (optional)
+
+#### 🧰 Developer & Extensibility Features
+
+- [ ] Hook system for custom auth validation and logging  
+- [ ] Logging sink options (stdout, file, syslog, remote endpoint)  
+- [ ] Web UI for basic metrics and active session inspection  
+- [ ] Architecture diagram and full configuration reference in docs  
+- [ ] CLI for managing magic links and session state
+
+---
+
+### 🧪 Long-Term / Exploratory Ideas
+
+- [ ] WebAuthn support as an alternative login method  
+- [ ] QR-code-based login links  
+- [ ] OAuth2 token relay proxy mode (e.g., act as lightweight IdP)  
+- [ ] Self-expiring magic link tokens with usage audit  
+- [ ] Hardened builds with static linking and binary signing
 
 ---
 
