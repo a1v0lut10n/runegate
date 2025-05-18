@@ -84,6 +84,10 @@ if [ -f "$REPO_DIR/.env.example" ]; then
     cp "$REPO_DIR/.env.example" "$CONFIG_DIR/runegate.env"
     echo "# Copied from .env.example - Modify for your environment" > "$CONFIG_DIR/runegate.env"
     cat "$REPO_DIR/.env.example" >> "$CONFIG_DIR/runegate.env"
+    
+    # Generate secure secrets and update the environment file
+    echo "Generating secure secrets for JWT and session..."
+    "$REPO_DIR/deploy/generate_secrets.sh" "$CONFIG_DIR/runegate.env"
 fi
 
 # Copy email configuration example

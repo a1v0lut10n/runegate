@@ -41,6 +41,7 @@ This directory contains scripts and configuration files to deploy Runegate as a 
 - Debian-based system (Ubuntu 20.04+, Debian 10+)
 - Root or sudo access
 - Internet connection for dependency installation
+- OpenSSL (for secure secret generation)
 
 ### Installation Steps
 
@@ -183,6 +184,44 @@ If Runegate fails with "address already in use":
 sudo netstat -tuln | grep 7870
 sudo lsof -i :7870
 ```
+
+### Managing Secure Secrets
+
+Runegate requires two secure secrets for operation:
+
+1. **JWT Secret** - Used for signing magic link tokens
+2. **Session Key** - Used for encrypting session cookies
+
+The installation script automatically generates these secrets using cryptographically secure random values. However, you can also manage these secrets manually:
+
+#### Generating New Secrets
+
+```bash
+# Generate and show secrets only
+sudo ./deploy/generate_secrets.sh
+
+# Generate and update an environment file
+sudo ./deploy/generate_secrets.sh /etc/runegate/runegate.env
+```
+
+#### Manual Secret Generation
+
+If you prefer to generate secrets manually:
+
+```bash
+# Generate JWT secret
+openssl rand -base64 64 | tr -d '\n'
+
+# Generate session key
+openssl rand -base64 32 | tr -d '\n'
+```
+
+#### Important Security Notes
+
+- Always use secrets with high entropy (at least 256 bits)
+- Store secrets securely and avoid committing them to version control
+- Rotate secrets periodically in production environments
+- If secrets are compromised, generate new ones immediately
 
 ## Security Best Practices
 
