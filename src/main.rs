@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, Responder, Error};
-use tracing::{info, warn, instrument};
+use tracing::{info, warn, error, debug, instrument};
 use actix_session::{Session, SessionMiddleware, storage::CookieSessionStore};
 use actix_web::cookie::{Key, SameSite};
 use actix_web::http::header;
@@ -161,9 +161,39 @@ async fn auth_check_and_proxy(req: HttpRequest, body: web::Bytes, session: Sessi
 
 /// Load configuration from TOML file
 fn load_config() -> AppConfig {
-    // Load email config from config/email.toml
-    let config_text = fs::read_to_string("config/email.toml")
-        .expect("Failed to read email config file");
+    // Try multiple locations for the email config file
+    // 1. First try the system-installed location (for deployed environments)
+    // 2. Then try the local development path
+    let config_paths = [
+        "/etc/runegate/config/email.toml",  // System-installed path
+        "config/email.toml",               // Development path
+    ];
+    
+    // Try each path until one works
+    let mut config_text = None;
+    let mut last_error = None;
+    
+    for path in &config_paths {
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                info!("Loaded email configuration from {}", path);
+                config_text = Some(content);
+                break;
+            },
+            Err(err) => {
+                debug!("Could not load email config from {}: {}", path, err);
+                last_error = Some(err);
+            }
+        }
+    }
+    
+    // Unwrap the configuration or fail with the last error
+    let config_text = config_text.unwrap_or_else(|| {
+        error!("Failed to load email configuration from any of the specified paths");
+        panic!("Failed to read email config file: {:?}", last_error.unwrap());
+    });
+    
+    // Parse the email configuration
     let email_config: EmailConfig = toml::from_str(&config_text)
         .expect("Failed to parse email config");
     
