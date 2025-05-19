@@ -39,10 +39,20 @@ runegate/
 │   └── test_jwt_validation.rs  # Tool for testing JWT tokens
 ├── config/
 │   └── email.toml          # SMTP configuration
+├── docs/
+│   └── architecture-overview.md  # System design and deployment architecture
 ├── .env                    # Optional: secrets and overrides
 ├── Cargo.toml
 └── README.md
 ```
+
+---
+
+## 📚 Documentation
+
+Additional documentation is available in the `docs/` directory:
+
+- [Architecture Overview](docs/architecture-overview.md) - System design and deployment architecture
 
 ---
 
@@ -499,8 +509,41 @@ See the [deployment guide](deploy/README.md) for complete documentation.
 
 ## 🔗 Related Projects
 
-- `ailanthus-deploy`: Infrastructure orchestration and deploy automation
-- `neufallenbach`: Gradio-based AI frontend protected by Runegate
+While no single crate offers the exact functionality of `runegate` — a lightweight Rust-based identity proxy using magic-link authentication over email — several existing projects and libraries provide composable building blocks that inspired or overlap with `runegate`'s functionality.
+
+`runegate` is implemented using a combination of:
+
+- [`lettre`](https://crates.io/crates/lettre) for SMTP email delivery,
+- [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) for secure, time-limited tokens,
+- [`actix-web`](https://crates.io/crates/actix-web) for handling HTTP routes,
+- [`actix-session`](https://crates.io/crates/actix-session) for session management, and
+- [`governor`](https://crates.io/crates/governor) for rate limiting.
+
+Below is a list of related crates that provide similar or complementary functionality.
+
+### 🔐 Identity & Authentication
+
+- [`oxide-auth`](https://crates.io/crates/oxide-auth) – A full-featured OAuth2 server library for Rust. Good for token-based auth, but not tailored for email-based flows.
+- [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) – Essential for encoding and decoding secure JWTs with embedded claims such as expiry and user identity.
+- [`actix-identity`](https://crates.io/crates/actix-identity) – Identity middleware for Actix. Useful for managing login state with cookies.
+
+### ✉️ Email & Magic-Link Infrastructure
+
+- [`lettre`](https://crates.io/crates/lettre) – A modern email library for sending SMTP messages securely over TLS or STARTTLS.
+- [`uuid`](https://crates.io/crates/uuid) – For generating cryptographically random identifiers used in login links.
+- [`rand`](https://crates.io/crates/rand) – Provides secure token or nonce generation.
+
+### 🕸️ Web Frameworks / Glue
+
+- [`actix-web`](https://crates.io/crates/actix-web) – A powerful and performant web framework used to handle routing and request processing.
+- [`warp`](https://crates.io/crates/warp) – An alternative web framework with strong type safety and composability.
+- [`axum-login`](https://crates.io/crates/axum-login) – A login/session management layer built for Axum. Useful for session-based identity, though it uses password-based auth by default.
+
+### 🧠 High-Level Identity Platforms
+
+- [`auth0`](https://crates.io/crates/auth0) – Integration support for Auth0, a commercial identity provider with passwordless login flows. Suitable for projects using SaaS identity infrastructure.
+
+These libraries can serve as a foundation for your own magic-link or token-based identity proxy solution if you are not using `runegate`.
 
 ---
 
