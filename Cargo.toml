@@ -1,12 +1,13 @@
 [package]
 name = "runegate"
 version = "0.1.0"
-authors = ["Aivolution GmbH <ai@aivolution.ai>"]
+authors = ["Hans Van Wesenbeeck <hvw@aivolution.ch>"]
 license = "Apache-2.0"
 edition = "2024"
 readme = "README.md"
 description = "Lightweight Rust-based identity proxy"
 repository = "https://github.com/a1v0lut10n/runegate"
+homepage = "https://github.com/a1v0lut10n/runegate"
 keywords = ["authentication", "identity", "jwt", "rate-limiting", "proxy"]
 categories = ["authentication", "web-programming", "network-programming"]
 
