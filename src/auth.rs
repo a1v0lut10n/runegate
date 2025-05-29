@@ -108,7 +108,7 @@ pub fn get_jwt_secret() -> Vec<u8> {
                         This is NOT suitable for production. Please set RUNEGATE_JWT_SECRET."
                     );
                     // Generate a 32-byte random secret
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     let mut secret = [0u8; 32];
                     rng.fill(&mut secret);
                     secret.to_vec()
