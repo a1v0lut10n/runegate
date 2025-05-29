@@ -36,10 +36,25 @@ echo "  Rate Limiting: $RATE_LIMIT_ENABLED"
 
 # Set environment variables for the test server
 export RUST_LOG=$LOG_LEVEL
-export RUNEGATE_RATE_LIMIT_ENABLED=$RATE_LIMIT_ENABLED
+
+# Double-check the raw value of the rate limit enabled flag
+echo "📋 Raw RATE_LIMIT_ENABLED value: '$RATE_LIMIT_ENABLED'"
+
+# Force lowercase and trim to ensure consistency
+if [ "${RATE_LIMIT_ENABLED,,}" = "false" ] || [ "$RATE_LIMIT_ENABLED" = "0" ]; then
+    export RUNEGATE_RATE_LIMIT_ENABLED="false"
+    echo "🔓 Rate limiting will be DISABLED"
+else
+    export RUNEGATE_RATE_LIMIT_ENABLED="true"
+    echo "🔒 Rate limiting will be ENABLED"
+fi
+
 export RUNEGATE_LOGIN_RATE_LIMIT=5
 export RUNEGATE_EMAIL_COOLDOWN=2  # 2 seconds for faster testing
 export RUNEGATE_TOKEN_RATE_LIMIT=10
+
+# Verify final environment variable value
+echo "📋 Final RUNEGATE_RATE_LIMIT_ENABLED value: '$RUNEGATE_RATE_LIMIT_ENABLED'"
 
 # Start the server in the background
 cd "$(dirname "$0")/.." # Move to project root
