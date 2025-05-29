@@ -8,7 +8,9 @@ echo "==============================="
 
 # Default values
 TEST_NAME=${1:-""}
-RATE_LIMIT_ENABLED=${2:-true}
+
+# Get rate limit setting from environment variable or default to true
+RATE_LIMIT_ENABLED=${RUNEGATE_RATE_LIMIT_ENABLED:-true}
 
 # Prepare command
 if [ -z "$TEST_NAME" ]; then
