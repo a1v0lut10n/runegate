@@ -1,12 +1,15 @@
 [package]
 name = "runegate"
 version = "0.1.0"
-authors = ["Aivolution GmbH <ai@aivolution.ai>"]
+authors = ["Hans Van Wesenbeeck <hvw@aivolution.ch>"]
 license = "Apache-2.0"
 edition = "2024"
 readme = "README.md"
 description = "Lightweight Rust-based identity proxy"
 repository = "https://github.com/a1v0lut10n/runegate"
+homepage = "https://github.com/a1v0lut10n/runegate"
+keywords = ["authentication", "identity", "jwt", "rate-limiting", "proxy"]
+categories = ["authentication", "web-programming", "network-programming"]
 
 [dependencies]
 actix-web = { version = "4.11.0", features = ["cookies"] }
@@ -33,8 +36,8 @@ governor = "0.10.0"
 actix-governor = "0.8.0"
 fxhash = "0.2.1"  # Fast hashing for keys
 lru = "0.14.0"    # LRU cache for rate limiting storage
-rand = "0.8"
+rand = "0.9.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12.15", features = ["json"] }
+reqwest = { version = "0.12.18", features = ["json"] }

@@ -466,9 +466,9 @@ Deploying any application, including Runegate, requires careful attention to sec
 - **Confidentiality**: These secrets must be kept confidential.
 - **Avoid Hardcoding**: Do not hardcode secrets into your deployment scripts or source control.
 - **Production Methods**: Use secure methods for providing secrets in production:
-    - Environment variables (e.g., passed by your orchestrator or systemd unit).
-    - `.env` files, ensuring the file has restrictive permissions (e.g., readable only by the `runegate` user).
-    - Dedicated secret management systems like HashiCorp Vault, Docker secrets, Kubernetes secrets, or cloud provider secret managers.
+  - Environment variables (e.g., passed by your orchestrator or systemd unit).
+  - `.env` files, ensuring the file has restrictive permissions (e.g., readable only by the `runegate` user).
+  - Dedicated secret management systems like HashiCorp Vault, Docker secrets, Kubernetes secrets, or cloud provider secret managers.
 
 ### 3. Use `RUNEGATE_ENV=production`
 

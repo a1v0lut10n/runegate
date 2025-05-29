@@ -242,7 +242,7 @@ fn get_session_key() -> Key {
                         "RUNEGATE_SESSION_KEY is not set. Generating a temporary random key. \
                         This is NOT suitable for production. Please set RUNEGATE_SESSION_KEY (min 64 bytes)."
                     );
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     let mut key = [0u8; 64];
                     rng.fill(&mut key);
                     Key::from(&key)
