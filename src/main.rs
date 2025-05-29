@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use runegate::email::EmailConfig;
 use runegate::send_magic_link::send_magic_link;
-use runegate::auth::{generate_magic_link, verify_token, get_magic_link_expiry, JWT_SECRET_ENV, AuthError}; // Added AuthError
+use runegate::auth::{generate_magic_link, verify_token, get_magic_link_expiry, JWT_SECRET_ENV};
 use runegate::proxy::{proxy_request, TARGET_SERVICE_ENV};
 use runegate::logging;
 use runegate::middleware::AuthMiddleware;
@@ -243,12 +243,20 @@ fn get_session_key() -> Key {
                         This is NOT suitable for production. Please set RUNEGATE_SESSION_KEY (min 64 bytes)."
                     );
                     let mut rng = rand::thread_rng();
-                    let key: [u8; 64] = rng.gen();
+                    let mut key = [0u8; 64];
+                    rng.fill(&mut key);
                     Key::from(&key)
                 }
             }
         }
     }
+}
+
+/// Diagnostic endpoint to return the current rate limiting configuration
+#[instrument(name = "rate_limit_info")]
+async fn rate_limit_info(rate_limiters: web::Data<Arc<RateLimiters>>) -> impl Responder {
+    let rate_limit_config = rate_limiters.config.clone();
+    HttpResponse::Ok().json(rate_limit_config)
 }
 
 #[actix_web::main]
@@ -345,6 +353,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/health").route(web::get().to(health_check)))
             .service(web::resource("/login").route(web::post().to(login)))
             .service(web::resource("/auth").route(web::get().to(auth)))
+            .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)))
             // Static files serving
             .service(Files::new("/login.html", "static").index_file("login.html"))
             .service(Files::new("/", "static"))

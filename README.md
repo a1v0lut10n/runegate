@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/img/runegate-logo.svg" alt="Runegate Logo" width="300">
+</p>
+
 # Runegate
 
 **Runegate** is a lightweight Rust-based identity proxy that enables secure, user-friendly access to internal or private web applications using **magic email links**.

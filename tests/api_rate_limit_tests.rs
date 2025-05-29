@@ -188,6 +188,21 @@ mod api_tests {
             
             println!("With rate limiting disabled, all requests should succeed...");
             
+            // First, check the actual rate limiting configuration
+            println!("🔍 Checking actual rate limit configuration from server...");
+            let config_res = client.get(&format!("{}/rate_limit_info", SERVER_URL))
+                .send()
+                .await
+                .unwrap();
+            
+            if config_res.status().is_success() {
+                let config = config_res.json::<serde_json::Value>().await.unwrap();
+                println!("Server config: {}", config);
+                println!("Rate limiting enabled: {}", config["enabled"]);
+            } else {
+                println!("❌ Failed to get rate limit config: {}", config_res.status());
+            }
+            
             // Make multiple requests that would normally trigger rate limiting
             // Use same IP but different emails to test IP-based limiting specifically
             let mut responses = vec![];

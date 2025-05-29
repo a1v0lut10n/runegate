@@ -109,7 +109,8 @@ pub fn get_jwt_secret() -> Vec<u8> {
                     );
                     // Generate a 32-byte random secret
                     let mut rng = rand::thread_rng();
-                    let secret: [u8; 32] = rng.gen();
+                    let mut secret = [0u8; 32];
+                    rng.fill(&mut secret);
                     secret.to_vec()
                 }
             }

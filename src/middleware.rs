@@ -58,7 +58,8 @@ where
         let service = Rc::clone(&self.service);
         
         // Skip auth check for public endpoints
-        if path == "/login" || path == "/health" || path == "/login.html" || path.starts_with("/auth") || path.starts_with("/static") {
+        if path == "/login" || path == "/health" || path == "/rate_limit_info" || path == "/login.html" || 
+           path.starts_with("/auth") || path.starts_with("/static") || path.starts_with("/img") {
             debug!("Allowing access to public endpoint: {}", path);
             let fut = service.call(req);
             

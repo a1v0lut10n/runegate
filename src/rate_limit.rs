@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use tracing::{info, warn};
+use serde::Serialize;
 
 /// Environment variable names for rate limiting configuration
 pub const LOGIN_RATE_LIMIT_ENV: &str = "RUNEGATE_LOGIN_RATE_LIMIT";
@@ -19,7 +20,7 @@ pub const DEFAULT_EMAIL_COOLDOWN: u64 = 300; // 5 minutes (300 seconds) cooldown
 pub const DEFAULT_TOKEN_RATE_LIMIT: u32 = 10; // 10 token verification attempts per minute per IP
 
 /// Configuration for all rate limiting mechanisms
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RateLimitConfig {
     /// Number of login attempts allowed per minute per IP
     pub login_rate_limit: u32,
@@ -89,6 +90,7 @@ impl Timestamp {
 
 /// Email rate limiter to enforce cooldown periods between sending magic links
 /// to the same email address
+#[derive(Debug)]
 pub struct EmailRateLimiter {
     /// LRU cache that maps email addresses to last request timestamps
     cache: Mutex<LruCache<String, Timestamp>>,
@@ -136,6 +138,7 @@ impl EmailRateLimiter {
 }
 
 /// A simple rate limiter for login attempts using a HashMap to track counts
+#[derive(Debug)]
 pub struct LoginRateLimiter {
     /// Maps IP -> (count, last_reset_time)
     attempts: Mutex<HashMap<String, (u32, Timestamp)>>,
@@ -187,6 +190,7 @@ impl LoginRateLimiter {
 }
 
 /// Rate limiter for token verification attempts
+#[derive(Debug)]
 pub struct TokenRateLimiter {
     /// Maps IP -> (count, last_reset_time)
     attempts: Mutex<HashMap<String, (u32, Timestamp)>>,
@@ -238,6 +242,7 @@ impl TokenRateLimiter {
 }
 
 /// Global rate limiters container singleton
+#[derive(Debug)]
 pub struct RateLimiters {
     pub email_limiter: EmailRateLimiter,
     pub login_limiter: LoginRateLimiter,
