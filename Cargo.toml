@@ -33,6 +33,7 @@ governor = "0.10.0"
 actix-governor = "0.8.0"
 fxhash = "0.2.1"  # Fast hashing for keys
 lru = "0.14.0"    # LRU cache for rate limiting storage
+rand = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

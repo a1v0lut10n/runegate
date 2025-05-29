@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/img/runegate-logo.svg" alt="Runegate Logo" width="300">
+</p>
+
 # Runegate
 
 **Runegate** is a lightweight Rust-based identity proxy that enables secure, user-friendly access to internal or private web applications using **magic email links**.
@@ -140,11 +144,26 @@ Magic links expire after a configurable period (set via `RUNEGATE_MAGIC_LINK_EXP
 Optional configuration through environment variables or `.env` file:
 
 ```bash
-# JWT secret for token signing (recommended for production)
-RUNEGATE_JWT_SECRET=your_secure_jwt_secret
+# Defines the operational environment (e.g., `development`, `production`).
+# If set to `production`, stricter security rules are enforced:
+# - RUNEGATE_JWT_SECRET and RUNEGATE_SESSION_KEY must be set.
+# - RUNEGATE_SECURE_COOKIE defaults to `true`.
+RUNEGATE_ENV=production
 
-# Session key for cookies (recommended for production)
-RUNEGATE_SESSION_KEY=your_secure_session_key
+# JWT secret for token signing. Minimum 32 bytes recommended.
+# Must be set if RUNEGATE_ENV=production (app will panic otherwise).
+# If not set in non-production, a temporary secret is generated (unsafe for production).
+RUNEGATE_JWT_SECRET=your_very_secure_random_string_for_jwt_at_least_32_bytes
+
+# Session key for cookie encryption. Minimum 64 bytes required.
+# Must be set if RUNEGATE_ENV=production (app will panic otherwise).
+# If not set in non-production, a temporary key is generated (unsafe for production).
+RUNEGATE_SESSION_KEY=your_very_secure_random_string_for_session_cookies_at_least_64_bytes
+
+# Controls the `Secure` attribute of session cookies (`true` or `false`).
+# If unset, defaults to `true` if RUNEGATE_ENV=production, otherwise `false`.
+# Set to `true` when serving over HTTPS.
+RUNEGATE_SECURE_COOKIE=true
 
 # Target service URL (defaults to http://127.0.0.1:7860)
 RUNEGATE_TARGET_SERVICE=http://your-service-url
@@ -232,9 +251,9 @@ Runegate implements a multi-layered rate limiting system to protect against brut
 When rate limits are exceeded, Runegate responds with:
 
 - **HTTP 429 Too Many Requests** status code
-- **X-RateLimit-Exceeded** header identifying the limit type ("IP" or "Email")
-- **X-RateLimit-Reset** header indicating seconds until the limit resets
-- JSON response with a descriptive message about the rate limiting
+- **X-RateLimit-Exceeded** header identifying the limit type ("IP" or "Email").
+- **X-RateLimit-Reset** header indicating seconds until the limit resets. For IP-based limits (login and token verification), this is typically 60 seconds. For email-based cooldowns, it's the remaining cooldown time.
+- JSON response with a descriptive message about the rate limiting.
 
 ### Configuration
 
@@ -336,16 +355,17 @@ Runegate implements three types of rate limiting mechanisms to protect against a
 1. **IP-based Login Rate Limiting** - Prevents brute force login attempts by limiting the number of login requests from the same IP address.
    - Default: 5 attempts per minute per IP address
    - HTTP 429 response when limit exceeded
-   - X-RateLimit-* headers included in responses
+   - `X-RateLimit-Exceeded: IP` and `X-RateLimit-Reset: 60` headers included.
 
 2. **Email-based Cooldown** - Prevents sending multiple magic links to the same email address in quick succession.
    - Default: 300 seconds (5 minutes) cooldown between requests for the same email
-   - Remaining time is returned in error response
-   - Prevents email flooding and resource exhaustion
+   - `X-RateLimit-Exceeded: Email` and `X-RateLimit-Reset: <remaining_seconds>` headers included.
+   - Prevents email flooding and resource exhaustion.
 
 3. **Token Verification Rate Limiting** - Limits attempts to verify auth tokens from the same IP address.
    - Default: 10 verification attempts per minute per IP address
-   - Prevents brute-forcing of JWT tokens
+   - HTTP 429 response when limit exceeded
+   - `X-RateLimit-Exceeded: IP` and `X-RateLimit-Reset: 60` headers included.
 
 **Configuring Rate Limiting:**
 
@@ -427,6 +447,58 @@ The systemd deployment includes:
 - Standard Linux directory structure
 
 See the [deployment guide](deploy/README.md) for complete documentation.
+
+---
+
+## 🛡️ Security Best Practices
+
+Deploying any application, including Runegate, requires careful attention to security. Here are some best practices to ensure your Runegate deployment is as secure as possible:
+
+### 1. HTTPS is Essential
+
+- **Always deploy Runegate behind a reverse proxy that handles TLS termination (HTTPS).** Examples include Nginx, Caddy, or cloud provider load balancers.
+- This is crucial for protecting the confidentiality of data in transit, including session cookies (especially when `RUNEGATE_SECURE_COOKIE` is set to `true`) and the tokens within magic links.
+- Do not expose Runegate directly to the internet over HTTP.
+
+### 2. Robust Secret Management
+
+- **Strong Secrets**: Ensure `RUNEGATE_JWT_SECRET` (min 32 bytes) and `RUNEGATE_SESSION_KEY` (min 64 bytes) are cryptographically strong, unique random strings. Do not use default or easily guessable values.
+- **Confidentiality**: These secrets must be kept confidential.
+- **Avoid Hardcoding**: Do not hardcode secrets into your deployment scripts or source control.
+- **Production Methods**: Use secure methods for providing secrets in production:
+    - Environment variables (e.g., passed by your orchestrator or systemd unit).
+    - `.env` files, ensuring the file has restrictive permissions (e.g., readable only by the `runegate` user).
+    - Dedicated secret management systems like HashiCorp Vault, Docker secrets, Kubernetes secrets, or cloud provider secret managers.
+
+### 3. Use `RUNEGATE_ENV=production`
+
+- **Always set `RUNEGATE_ENV=production` in your production deployments.**
+- This enables critical security checks, such as ensuring that `RUNEGATE_JWT_SECRET` and `RUNEGATE_SESSION_KEY` are set, and defaults `RUNEGATE_SECURE_COOKIE` to `true`.
+- Without this setting, Runegate may use insecure temporary secrets suitable only for development.
+
+### 4. Principle of Least Privilege
+
+- **Dedicated User**: Run the Runegate process as a dedicated, unprivileged user (e.g., `runegate`). The provided systemd unit example already does this.
+- **File Permissions**: Ensure the Runegate user only has write access to directories it explicitly needs (e.g., potentially for log files if not using stdout). Configuration files and the application binary should not be writable by the Runegate process user.
+- **Systemd Hardening**: The example `runegate.service` file includes `ProtectSystem=strict`, which is a good starting point for systemd-based deployments. Review and apply other relevant hardening options.
+
+### 5. Firewall Configuration
+
+- **Expose Only Necessary Ports**: Configure your server's firewall (e.g., `ufw`, `firewalld`, or cloud provider firewalls) to only expose the port Runegate is listening on (typically 7870, or the port your HTTPS reverse proxy listens on, e.g., 443) to users or the internet.
+- **Internal Services**: The target service proxied by Runegate should typically not be directly accessible from the internet.
+
+### 6. Regular Updates and Audits
+
+- **Update Runegate**: Periodically check the Runegate project repository for updates and apply them to your deployment. Updates may contain security patches and bug fixes.
+- **Update Dependencies**: Regularly update dependencies by running `cargo update` and rebuilding Runegate.
+- **Audit Dependencies**: Use `cargo audit` to check for known vulnerabilities in dependencies and update them as needed.
+
+### 7. Monitoring and Logging
+
+- **Collect Logs**: Configure your production environment to collect logs from Runegate. The JSON logging format (`RUNEGATE_LOG_FORMAT=json`) is recommended for easier parsing and ingestion into log management systems.
+- **Monitor Activity**: Regularly monitor logs for suspicious activity, repeated errors, or unusual traffic patterns. This can help detect potential security incidents or operational issues.
+
+By following these best practices, you can significantly improve the security posture of your Runegate deployment.
 
 ---
 

@@ -18,11 +18,12 @@ use runegate::logging;
 use runegate::middleware::AuthMiddleware;
 use runegate::rate_limit::RateLimiters;
 use tracing_actix_web::TracingLogger;
+use rand::Rng; // Added for random key generation
 
 // Application configuration constants
 const SESSION_KEY_ENV: &str = "RUNEGATE_SESSION_KEY";
-// Ensure the key is at least 64 bytes for proper security
-const DEFAULT_SESSION_KEY: &[u8] = b"runegate_development_session_key_please_change_this_is_not_secure_enough_for_production_use_a_better_key";
+const RUNEGATE_ENV: &str = "RUNEGATE_ENV"; // Environment variable to check for production mode
+const RUNEGATE_SECURE_COOKIE_VAR: &str = "RUNEGATE_SECURE_COOKIE";
 
 // We'll get the magic link expiry from environment instead of hardcoding it
 // Default is defined in auth.rs as DEFAULT_MAGIC_LINK_EXPIRY
@@ -65,6 +66,7 @@ async fn login(
     if !rate_limiters.login_limiter.check_ip(&client_ip) {
         return HttpResponse::TooManyRequests()
             .append_header(("X-RateLimit-Exceeded", "IP"))
+            .append_header(("X-RateLimit-Reset", "60")) // Added header
             .json("Too many login attempts from this IP address. Please try again later.");
     }
     
@@ -79,7 +81,14 @@ async fn login(
     
     // Generate a magic link with JWT token using configurable expiry time
     let expiry_minutes = get_magic_link_expiry();
-    let login_url = generate_magic_link(email, base_url, expiry_minutes);
+    let login_url = match generate_magic_link(email, base_url, expiry_minutes) {
+        Ok(url) => url,
+        Err(e) => {
+            error!("Failed to generate magic link: {}", e);
+            // Consider more specific error responses based on AuthError variants if needed
+            return HttpResponse::InternalServerError().json("Failed to generate magic link due to internal error.");
+        }
+    };
     
     // Log the expiry time for debugging
     info!("📧 Magic link generated with {} minutes expiry", expiry_minutes);
@@ -91,7 +100,7 @@ async fn login(
             HttpResponse::Ok().json(format!("Magic link sent to {}", email))
         },
         Err(e) => {
-            warn!("Failed to send magic link: {}", e);
+            warn!("Failed to send magic link: {}", e); // This is for email sending failure
             HttpResponse::InternalServerError().json("Failed to send login email")
         }
     }
@@ -114,6 +123,7 @@ async fn auth(
     if !rate_limiters.token_limiter.check_ip(&client_ip) {
         return HttpResponse::TooManyRequests()
             .append_header(("X-RateLimit-Exceeded", "IP"))
+            .append_header(("X-RateLimit-Reset", "60")) // Added header
             .json("Too many token verification attempts from this IP. Please try again later.");
     }
 
@@ -210,9 +220,43 @@ fn load_config() -> AppConfig {
 /// Get session key from environment or use default
 fn get_session_key() -> Key {
     match std::env::var(SESSION_KEY_ENV) {
-        Ok(key) => Key::from(key.as_bytes()),
-        Err(_) => Key::from(DEFAULT_SESSION_KEY),
+        Ok(key_str) => {
+            let key_bytes = key_str.as_bytes();
+            if key_bytes.len() < 64 {
+                error!(
+                    "RUNEGATE_SESSION_KEY is set but is less than 64 bytes ({} bytes). This is insecure.",
+                    key_bytes.len()
+                );
+                panic!("RUNEGATE_SESSION_KEY must be at least 64 bytes.");
+            }
+            Key::from(key_bytes)
+        }
+        Err(_) => {
+            match std::env::var(RUNEGATE_ENV).as_deref() {
+                Ok("production") => {
+                    error!("CRITICAL: RUNEGATE_SESSION_KEY is not set in a production environment!");
+                    panic!("RUNEGATE_SESSION_KEY must be set in production.");
+                }
+                _ => {
+                    warn!(
+                        "RUNEGATE_SESSION_KEY is not set. Generating a temporary random key. \
+                        This is NOT suitable for production. Please set RUNEGATE_SESSION_KEY (min 64 bytes)."
+                    );
+                    let mut rng = rand::thread_rng();
+                    let mut key = [0u8; 64];
+                    rng.fill(&mut key);
+                    Key::from(&key)
+                }
+            }
+        }
     }
+}
+
+/// Diagnostic endpoint to return the current rate limiting configuration
+#[instrument(name = "rate_limit_info")]
+async fn rate_limit_info(rate_limiters: web::Data<Arc<RateLimiters>>) -> impl Responder {
+    let rate_limit_config = rate_limiters.config.clone();
+    HttpResponse::Ok().json(rate_limit_config)
 }
 
 #[actix_web::main]
@@ -263,11 +307,38 @@ async fn main() -> std::io::Result<()> {
     let rate_limiters_data = web::Data::new(rate_limiters.clone());
     
     HttpServer::new(move || {
+        // Determine cookie_secure setting
+        let secure_cookie = match std::env::var(RUNEGATE_SECURE_COOKIE_VAR).as_deref() {
+            Ok("true") => {
+                info!("Using secure cookies as {} is set to 'true'.", RUNEGATE_SECURE_COOKIE_VAR);
+                true
+            }
+            Ok("false") => {
+                info!("Using insecure cookies as {} is set to 'false'.", RUNEGATE_SECURE_COOKIE_VAR);
+                false
+            }
+            _ => { // RUNEGATE_SECURE_COOKIE_VAR is not set or has an invalid value
+                match std::env::var(RUNEGATE_ENV).as_deref() {
+                    Ok("production") => {
+                        info!("Using secure cookies as {} is set to 'production' and {} is not set.", RUNEGATE_ENV, RUNEGATE_SECURE_COOKIE_VAR);
+                        true
+                    }
+                    _ => {
+                        warn!(
+                            "Using insecure cookies by default. Set {} or {} to 'true' or '{}' to 'production' for secure cookies.",
+                            RUNEGATE_SECURE_COOKIE_VAR, RUNEGATE_ENV, RUNEGATE_ENV
+                        );
+                        false
+                    }
+                }
+            }
+        };
+
         App::new()
             .wrap(TracingLogger::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)  // Set to true in production with HTTPS
+                    .cookie_secure(secure_cookie)
                     .cookie_http_only(true)
                     .cookie_same_site(SameSite::Lax)
                     .build()
@@ -282,6 +353,7 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/health").route(web::get().to(health_check)))
             .service(web::resource("/login").route(web::post().to(login)))
             .service(web::resource("/auth").route(web::get().to(auth)))
+            .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)))
             // Static files serving
             .service(Files::new("/login.html", "static").index_file("login.html"))
             .service(Files::new("/", "static"))
