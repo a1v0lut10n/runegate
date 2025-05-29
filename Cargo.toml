@@ -7,6 +7,8 @@ edition = "2024"
 readme = "README.md"
 description = "Lightweight Rust-based identity proxy"
 repository = "https://github.com/a1v0lut10n/runegate"
+keywords = ["authentication", "identity", "jwt", "rate-limiting", "proxy"]
+categories = ["authentication", "web-programming", "network-programming"]
 
 [dependencies]
 actix-web = { version = "4.11.0", features = ["cookies"] }
