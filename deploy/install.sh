@@ -145,6 +145,40 @@ cp "$REPO_DIR/deploy/systemd/runegate.service" /etc/systemd/system/
 # Reload systemd to recognize the new service
 systemctl daemon-reload
 
+echo "Step 8: Setting up nginx configuration (optional)..."
+if command -v nginx &> /dev/null; then
+    if [ -d "$REPO_DIR/deploy/nginx" ] && [ -f "$REPO_DIR/deploy/nginx/runegate.conf" ]; then
+        echo "Nginx detected. Installing Runegate nginx configuration..."
+        
+        # Create sites-available directory if it doesn't exist
+        mkdir -p /etc/nginx/sites-available
+        mkdir -p /etc/nginx/sites-enabled
+        
+        # Copy the nginx configuration
+        cp "$REPO_DIR/deploy/nginx/runegate.conf" /etc/nginx/sites-available/
+        
+        # Enable the site if not already enabled
+        if [ ! -L /etc/nginx/sites-enabled/runegate.conf ]; then
+            ln -s /etc/nginx/sites-available/runegate.conf /etc/nginx/sites-enabled/
+            echo "Nginx site enabled. Don't forget to update the server_name in the config."
+        fi
+        
+        # Check if nginx configuration is valid
+        if nginx -t; then
+            echo "Nginx configuration is valid. Don't forget to reload nginx:"
+            echo "  sudo systemctl reload nginx"
+        else
+            echo "⚠️  Warning: Nginx configuration test failed. Please check the configuration."
+        fi
+    else
+        echo "⚠️  Nginx is installed but Runegate nginx configuration not found."
+        echo "   You will need to set up nginx forwarding manually."
+    fi
+else
+    echo "Nginx not detected. Skipping nginx configuration."
+    echo "If you plan to use a reverse proxy, please set it up manually."
+fi
+
 echo "============================================="
 echo "Installation Complete!"
 echo "============================================="

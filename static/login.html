@@ -102,9 +102,23 @@
     </div>
 
     <script>
+        // Get base path for API requests - detects if we're behind a proxy
+        function getBasePath() {
+            // Extract the base path from the current URL
+            const path = window.location.pathname;
+            // If we're directly at /login.html, use root path
+            if (path === '/login.html') {
+                return '';
+            }
+            // If we're behind a proxy (e.g., /neufallenbach/login.html), extract the base path
+            const match = path.match(/^(\/[^\/]+)\//); 
+            return match ? match[1] : '';
+        }
+
         document.getElementById('login-button').addEventListener('click', async () => {
             const email = document.getElementById('email').value;
             const messageElement = document.getElementById('message');
+            const basePath = getBasePath();
             
             if (!email || !email.includes('@')) {
                 messageElement.textContent = 'Please enter a valid email address';
@@ -114,7 +128,7 @@
             }
             
             try {
-                const response = await fetch('/login', {
+                const response = await fetch(`${basePath}/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
