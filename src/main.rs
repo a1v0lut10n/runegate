@@ -343,6 +343,9 @@ async fn main() -> std::io::Result<()> {
                     .cookie_same_site(SameSite::Lax)
                     .build()
             )
+            // Static files serving
+            .service(Files::new("/login.html", "static").index_file("login.html"))
+            .service(Files::new("/", "static"))
             // No rate limiting middleware - we'll use direct checks in the handlers
             // Auth middleware
             .wrap(AuthMiddleware::new())
@@ -354,9 +357,6 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("/login").route(web::post().to(login)))
             .service(web::resource("/auth").route(web::get().to(auth)))
             .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)))
-            // Static files serving
-            .service(Files::new("/login.html", "static").index_file("login.html"))
-            .service(Files::new("/", "static"))
             // Protected routes need to be guarded in each handler
             .default_service(web::route().to(auth_check_and_proxy))
     })
