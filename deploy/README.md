@@ -227,23 +227,28 @@ openssl rand -base64 32 | tr -d '\n'
 
 ## Nginx Configuration
 
-Starting with version 0.1.1, Runegate includes an optional nginx configuration setup. This is particularly useful when you want to:
+Starting with version 0.1.2, Runegate includes an optional nginx configuration setup. This is particularly useful when you want to:
 
 - Serve Runegate under a specific path prefix (e.g., `/auth/` or `/runegate/`)
 - Enable SSL/TLS termination
 - Use nginx as a reverse proxy in front of Runegate
 
-### Automatic Setup
+### Installation Script Integration
 
-The installation script will automatically detect nginx and offer to install the configuration:
+By default, the installation script will not set up nginx configuration, as Runegate is typically integrated into an existing web server configuration.
+
+If you want to set up a standalone nginx configuration for Runegate, you can use the `--setup-nginx` flag:
 
 ```bash
-# During installation
-sudo ./deploy/install.sh
-
-# After installation, you'll see:
-# "Nginx detected. Installing Runegate nginx configuration..."
+sudo ./deploy/install.sh --setup-nginx
 ```
+
+This will:
+
+- Copy the Runegate nginx configuration to `/etc/nginx/sites-available/`
+- Enable the site by creating a symlink in `/etc/nginx/sites-enabled/`
+- Test the nginx configuration
+- Provide instructions for reloading nginx
 
 ### Manual Setup
 
