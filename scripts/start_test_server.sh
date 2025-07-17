@@ -37,6 +37,15 @@ echo "  Rate Limiting: $RATE_LIMIT_ENABLED"
 # Set environment variables for the test server
 export RUST_LOG=$LOG_LEVEL
 
+# Set a consistent JWT secret for development if not provided
+if [ -z "$RUNEGATE_JWT_SECRET" ]; then
+    # Using a predictable but secure dev-only value
+    export RUNEGATE_JWT_SECRET="runegate_development_jwt_secret_32chars"
+    echo "🔑 Using default development JWT secret. For production, set RUNEGATE_JWT_SECRET."
+else
+    echo "🔑 Using provided JWT secret from environment."
+fi
+
 # Double-check the raw value of the rate limit enabled flag
 echo "📋 Raw RATE_LIMIT_ENABLED value: '$RATE_LIMIT_ENABLED'"
 

@@ -139,9 +139,9 @@ async fn auth(
             // If token is valid, mark the session as authenticated
             session.insert("authenticated", true).ok();
             session.insert("email", email.clone()).ok();
-            // Redirect to the home page after successful auth
+            // Redirect to the protected service after successful auth
             HttpResponse::Found()
-                .append_header((header::LOCATION, "/"))
+                .append_header((header::LOCATION, "/proxy/"))
                 .json(format!("Authentication successful for {}", email))
         },
         Err(err) => {
@@ -343,20 +343,20 @@ async fn main() -> std::io::Result<()> {
                     .cookie_same_site(SameSite::Lax)
                     .build()
             )
-            // No rate limiting middleware - we'll use direct checks in the handlers
             // Auth middleware
             .wrap(AuthMiddleware::new())
             // App data
             .app_data(app_config.clone())
             .app_data(rate_limiters_data.clone())
-            // API Endpoints
+            // API Endpoints - define these first to ensure they take priority
             .service(web::resource("/health").route(web::get().to(health_check)))
             .service(web::resource("/login").route(web::post().to(login)))
             .service(web::resource("/auth").route(web::get().to(auth)))
             .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)))
-            // Static files serving
+            // Static files serving - place after API endpoints to avoid routing conflicts
             .service(Files::new("/login.html", "static").index_file("login.html"))
-            .service(Files::new("/", "static"))
+            .service(Files::new("/static", "static"))
+            .service(Files::new("/img", "static/img"))
             // Protected routes need to be guarded in each handler
             .default_service(web::route().to(auth_check_and_proxy))
     })
