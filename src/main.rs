@@ -163,8 +163,30 @@ async fn auth_check_and_proxy(req: HttpRequest, body: web::Bytes, session: Sessi
         proxy_request(req, body).await
     } else {
         // User is not authenticated, redirect to login
+        // Detect if we're behind a proxy and construct the correct redirect path
+        let redirect_path = if req.headers().contains_key("X-Forwarded-Proto") {
+            // We're behind a proxy, need to determine the base path
+            let original_uri = req.uri().path();
+            if original_uri == "/" {
+                // We're at the root of the proxied path, redirect to login.html at the same level
+                "./login.html".to_string()
+            } else {
+                // Extract the base path from the original URI
+                let path_segments: Vec<&str> = original_uri.trim_start_matches('/').split('/').collect();
+                if path_segments.len() > 1 {
+                    format!("/{}/login.html", path_segments[0])
+                } else {
+                    "/login.html".to_string()
+                }
+            }
+        } else {
+            // Direct access, use absolute path
+            "/login.html".to_string()
+        };
+        
+        debug!("Redirecting unauthenticated user to: {}", redirect_path);
         Ok(HttpResponse::Found()
-            .append_header((header::LOCATION, "/login.html"))
+            .append_header((header::LOCATION, redirect_path))
             .finish())
     }
 }
