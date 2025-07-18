@@ -250,6 +250,16 @@ This will:
 - Test the nginx configuration
 - Provide instructions for reloading nginx
 
+### HTTPS and SSL Configuration
+
+When using Runegate in a production environment with SSL:
+
+1. Ensure your nginx configuration handles SSL termination with proper certificates
+2. Set `RUNEGATE_BASE_URL=https://your-domain.com` in your environment configuration
+3. Restart the Runegate service to apply the changes
+
+This ensures magic links in emails will use HTTPS URLs, which is important for security in production.
+
 ### Manual Setup
 
 1. Copy the template configuration:
