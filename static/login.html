@@ -110,7 +110,7 @@
             if (path === '/login.html') {
                 return '';
             }
-            // If we're behind a proxy (e.g., /neufallenbach/login.html), extract the base path
+            // If we're behind a proxy (e.g., /proxyurl/login.html), extract the base path
             const match = path.match(/^(\/[^\/]+)\//); 
             return match ? match[1] : '';
         }
