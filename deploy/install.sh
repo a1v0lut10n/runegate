@@ -3,11 +3,14 @@
 # Runegate Installation Script for Debian-based systems
 # This script will:
 # 1. Install required dependencies
-# 2. Create a runegate user
-# 3. Build and install the Runegate binary
-# 4. Set up configuration files with proper permissions
-# 5. Configure the systemd service
-# 6. Start the service
+# 2. Create a runegate user and group
+# 3. Create directory structure
+# 4. Build the Runegate application
+# 5. Install Runegate application and static files
+# 6. Set up configuration files with proper permissions
+# 7. Configure the systemd service
+# 8. Configure nginx (if present)
+# 9. Display final instructions
 
 set -e
 
@@ -31,6 +34,23 @@ CONFIG_DIR="/etc/runegate"
 LOG_DIR="/var/log/runegate"
 DATA_DIR="/var/lib/runegate"
 REPO_DIR="$(pwd)"
+SETUP_NGINX=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --setup-nginx)
+      SETUP_NGINX=true
+      shift
+      ;;
+    *)
+      # Unknown option
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--setup-nginx]"
+      exit 1
+      ;;
+  esac
+done
 
 # Check if this script is run from the repository root
 if [ ! -f "$REPO_DIR/Cargo.toml" ] || [ ! -d "$REPO_DIR/src" ]; then
@@ -44,17 +64,19 @@ apt-get install -y curl build-essential pkg-config libssl-dev
 
 # Install Rust if not already installed
 if ! command -v rustc &> /dev/null; then
-    echo "Installing Rust..."
+    echo "  Installing Rust..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     source $HOME/.cargo/env
 fi
 
 echo "Step 2: Creating runegate user and group..."
 if ! getent group "$RUNEGATE_GROUP" > /dev/null; then
+    echo "  Creating system group '$RUNEGATE_GROUP'..."
     groupadd --system "$RUNEGATE_GROUP"
 fi
 
 if ! getent passwd "$RUNEGATE_USER" > /dev/null; then
+    echo "  Creating system user '$RUNEGATE_USER'..."
     useradd --system --gid "$RUNEGATE_GROUP" --shell /bin/false --home-dir "$INSTALL_DIR" "$RUNEGATE_USER"
 fi
 
@@ -145,6 +167,46 @@ cp "$REPO_DIR/deploy/systemd/runegate.service" /etc/systemd/system/
 # Reload systemd to recognize the new service
 systemctl daemon-reload
 
+echo "Step 8: Setting up nginx configuration (optional)..."
+if [ "$SETUP_NGINX" = true ]; then
+    if command -v nginx &> /dev/null; then
+        if [ -d "$REPO_DIR/deploy/nginx" ] && [ -f "$REPO_DIR/deploy/nginx/runegate.conf" ]; then
+            echo "  Installing Runegate nginx configuration..."
+            
+            # Create sites-available directory if it doesn't exist
+            mkdir -p /etc/nginx/sites-available
+            mkdir -p /etc/nginx/sites-enabled
+            
+            # Copy the nginx configuration
+            cp "$REPO_DIR/deploy/nginx/runegate.conf" /etc/nginx/sites-available/
+            
+            # Enable the site if not already enabled
+            if [ ! -L /etc/nginx/sites-enabled/runegate.conf ]; then
+                ln -s /etc/nginx/sites-available/runegate.conf /etc/nginx/sites-enabled/
+                echo "  Nginx site enabled. Don't forget to update the server_name in the config."
+            fi
+            
+            # Check if nginx configuration is valid
+            if nginx -t; then
+                echo "  Nginx configuration is valid. Don't forget to reload nginx:"
+                echo "    sudo systemctl reload nginx"
+            else
+                echo "  ⚠️  Warning: Nginx configuration test failed. Please check the configuration."
+            fi
+        else
+            echo "  ⚠️  Warning: Runegate nginx configuration not found at $REPO_DIR/deploy/nginx/runegate.conf"
+            echo "     You will need to set up nginx forwarding manually."
+        fi
+    else
+        echo "  ⚠️  Warning: Nginx not detected but --setup-nginx was specified."
+        echo "     Please install nginx first."
+    fi
+else
+    echo "  Nginx configuration skipped. To set up nginx, re-run with --setup-nginx flag."
+    echo "  For manual nginx configuration, see the documentation in deploy/README.md"
+fi
+
+echo "Step 9: Final instructions..."
 echo "============================================="
 echo "Installation Complete!"
 echo "============================================="

@@ -225,10 +225,96 @@ openssl rand -base64 32 | tr -d '\n'
 - Rotate secrets periodically in production environments
 - If secrets are compromised, generate new ones immediately
 
+## Nginx Configuration
+
+Starting with version 0.1.2, Runegate includes an optional nginx configuration setup. This is particularly useful when you want to:
+
+- Serve Runegate under a specific path prefix (e.g., `/auth/` or `/runegate/`)
+- Enable SSL/TLS termination
+- Use nginx as a reverse proxy in front of Runegate
+
+### Installation Script Integration
+
+By default, the installation script will not set up nginx configuration, as Runegate is typically integrated into an existing web server configuration.
+
+If you want to set up a standalone nginx configuration for Runegate, you can use the `--setup-nginx` flag:
+
+```bash
+sudo ./deploy/install.sh --setup-nginx
+```
+
+This will:
+
+- Copy the Runegate nginx configuration to `/etc/nginx/sites-available/`
+- Enable the site by creating a symlink in `/etc/nginx/sites-enabled/`
+- Test the nginx configuration
+- Provide instructions for reloading nginx
+
+### HTTPS and SSL Configuration
+
+When using Runegate in a production environment with SSL:
+
+1. Ensure your nginx configuration handles SSL termination with proper certificates
+2. Set `RUNEGATE_BASE_URL=https://your-domain.com` in your environment configuration
+3. Restart the Runegate service to apply the changes
+
+This ensures magic links in emails will use HTTPS URLs, which is important for security in production.
+
+### Manual Setup
+
+1. Copy the template configuration:
+
+   ```bash
+   sudo cp /opt/runegate/deploy/nginx/runegate.conf /etc/nginx/sites-available/
+   ```
+
+2. Edit the configuration to suit your needs:
+
+   ```bash
+   sudo nano /etc/nginx/sites-available/runegate.conf
+   ```
+
+   > **Important**: Update the `server_name` directive and adjust any other settings as needed.
+
+3. Enable the site:
+
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/runegate.conf /etc/nginx/sites-enabled/
+   ```
+
+4. Test and reload nginx:
+
+   ```bash
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+### Path Prefix Configuration
+
+If you want to serve Runegate under a specific path prefix (e.g., `/auth/`), modify your nginx configuration:
+
+```nginx
+# Example for serving Runegate under /auth/ path
+location /auth/ {
+    proxy_pass http://127.0.0.1:7870/;
+    
+    # Standard headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # Fix redirects - important!
+    proxy_redirect / /auth/;
+}
+```
+
+> **Note**: Runegate 0.1.1+ automatically detects when it's running behind a proxy with a path prefix and adjusts API calls accordingly. No additional configuration is needed.
+
 ## Security Best Practices
 
 1. Always run Runegate with the dedicated `runegate` user (automatic with systemd)
 2. Secure your JWT secret and session key
-3. Consider setting up a proper SSL/TLS termination with nginx/apache in front
+3. Set up SSL/TLS termination with nginx in production environments
 4. Review the systemd hardening parameters in `runegate.service`
 5. Implement a firewall (ufw) and only expose necessary ports
