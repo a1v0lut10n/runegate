@@ -58,8 +58,8 @@ where
         let service = Rc::clone(&self.service);
         
         // Skip auth check for public endpoints
-        if path == "/login" || path == "/health" || path == "/rate_limit_info" || path == "/login.html" || 
-           path.starts_with("/auth") || path.starts_with("/static") || path.starts_with("/img") {
+        if path == "/login" || path == "/health" || path == "/rate_limit_info" || path == "/login.html" || path == "/debug/session" || path == "/debug/cookies" || 
+            path.starts_with("/auth") || path.starts_with("/static") || path.starts_with("/img") {
             debug!("Allowing access to public endpoint: {}", path);
             let fut = service.call(req);
             
@@ -71,11 +71,32 @@ where
         
         // Get session from request extensions
         let session = req.get_session();
+        info!("Checking session for path: {}", path);
+        
+        // Debug session status
+        match session.status() {
+            actix_session::SessionStatus::Changed => info!("Session status: Changed"),
+            actix_session::SessionStatus::Purged => info!("Session status: Purged"),
+            actix_session::SessionStatus::Renewed => info!("Session status: Renewed"),
+            actix_session::SessionStatus::Unchanged => info!("Session status: Unchanged"),
+        }
+        
+        // Check all session entries
+        info!("Session entries: {:?}", session.entries());
         
         // Check if user is authenticated
-        let authenticated = session.get::<bool>("authenticated")
+        let authenticated_result = session.get::<bool>("authenticated");
+        info!("Session authenticated result: {:?}", authenticated_result);
+        
+        // Also check if email exists in session
+        let email_result = session.get::<String>("email");
+        info!("Session email result: {:?}", email_result);
+        
+        let authenticated = authenticated_result
             .map(|result| result.unwrap_or(false))
             .unwrap_or(false);
+            
+        info!("Final authenticated value: {}", authenticated);
             
         if authenticated {
             debug!("User is authenticated, allowing access to: {}", path);

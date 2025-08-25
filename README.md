@@ -23,6 +23,22 @@ It authenticates users without passwords by sending them time-limited login link
 
 ---
 
+## 🔄 Recent Changes
+
+- Configurable cookie domain via `RUNEGATE_COOKIE_DOMAIN` (defaults to host-only cookies)
+- Configurable session cookie name via `RUNEGATE_SESSION_COOKIE_NAME` (default: `runegate_id`)
+- Shared in-memory session store across workers to prevent cross-worker session loss
+- Correct middleware ordering so sessions are available during auth checks
+- Proxy path fix: `/proxy/*` maps to the target root path `/*`
+- Do not forward Runegate’s session cookie to the target service
+- Added debug endpoints for troubleshooting: `/debug/session`, `/debug/cookies`, `/debug/protected`
+
+Debug endpoints can now be toggled via the `RUNEGATE_DEBUG_ENDPOINTS` environment variable.
+
+- Identity headers injection (opt-in): When enabled, Runegate injects `X-Runegate-Authenticated`, `X-Runegate-User`, `X-Forwarded-User`, and `X-Forwarded-Email` for authenticated requests and strips any client-supplied versions of these headers.
+
+---
+
 ## 📦 Directory Structure
 
 ```bash
@@ -34,7 +50,9 @@ runegate/
 │   ├── proxy.rs             # Reverse proxy implementation
 │   ├── logging.rs           # Structured logging and tracing setup
 │   ├── middleware.rs        # Auth middleware implementation
-│   └── send_magic_link.rs   # Email sending functionality
+│   ├── send_magic_link.rs   # Email sending functionality
+│   ├── memory_session_store.rs # In-memory session store shared across workers
+│   └── rate_limit.rs        # Rate limiting implementation
 ├── static/
 │   └── login.html          # Login page for magic link requests
 ├── examples/
@@ -79,6 +97,8 @@ Runegate uses a reverse proxy architecture to secure access to your internal ser
 When a user clicks a magic link, they're directed to Runegate (port 7870), which validates their token, creates an authenticated session, and then proxies their requests to the target service (port 7860).
 
 This separation keeps your internal service secure while Runegate handles all the authentication logic.
+
+Deployment model: Prefer a dedicated subdomain (for example, `app.example.com`) that proxies all paths to Runegate. Path-based deployments (for example, `example.com/app`) are not supported by default and complicate cookie scoping and redirects.
 
 ---
 
@@ -164,6 +184,26 @@ RUNEGATE_SESSION_KEY=your_very_secure_random_string_for_session_cookies_at_least
 # If unset, defaults to `true` if RUNEGATE_ENV=production, otherwise `false`.
 # Set to `true` when serving over HTTPS.
 RUNEGATE_SECURE_COOKIE=true
+
+# Optional: Cookie `Domain` attribute. If unset, a host-only cookie is used (recommended).
+# Set only if you need the cookie to be sent to a specific parent domain.
+# Example: app.example.com
+RUNEGATE_COOKIE_DOMAIN=
+
+# Optional: Session cookie name. Defaults to `runegate_id`.
+# Change if the target app also uses a cookie named `id` or similar to avoid collisions.
+RUNEGATE_SESSION_COOKIE_NAME=runegate_id
+
+# Optional: Enable debug endpoints (/debug/session, /debug/cookies, /debug/protected)
+# Defaults: disabled in production, enabled in development unless explicitly set.
+RUNEGATE_DEBUG_ENDPOINTS=false
+
+# Optional: Inject identity headers to the target service
+# When enabled, Runegate injects X-Runegate-Authenticated, X-Runegate-User,
+# X-Forwarded-User, and X-Forwarded-Email for authenticated requests.
+# It also strips any client-supplied versions of these headers before forwarding.
+# Default: true
+RUNEGATE_IDENTITY_HEADERS=true
 
 # Target service URL (defaults to http://127.0.0.1:7860)
 RUNEGATE_TARGET_SERVICE=http://your-service-url
@@ -450,6 +490,123 @@ See the [deployment guide](deploy/README.md) for complete documentation.
 
 ---
 
+## 🌐 Production Deployment (HTTPS + Subdomain)
+
+Runegate is designed to sit behind a reverse proxy on a dedicated subdomain.
+
+### 1) DNS
+- Create an A/AAAA record for your subdomain, for example `app.example.com`, pointing to your VPS.
+
+### 2) Install as a systemd service
+- From this repository:
+
+```bash
+git clone https://github.com/a1v0lut10n/runegate.git
+cd runegate
+sudo ./deploy/install.sh
+```
+
+- Configure environment and email:
+
+```bash
+sudo nano /etc/runegate/runegate.env
+sudo nano /etc/runegate/config/email.toml
+```
+
+Recommended `/etc/runegate/runegate.env` for HTTPS deployments:
+
+```env
+RUNEGATE_ENV=production
+RUNEGATE_JWT_SECRET=...   # >= 32 bytes
+RUNEGATE_SESSION_KEY=...  # >= 64 bytes
+
+RUNEGATE_SECURE_COOKIE=true
+RUNEGATE_BASE_URL=https://app.example.com
+RUNEGATE_TARGET_SERVICE=http://127.0.0.1:7860
+
+# Optional
+# RUNEGATE_COOKIE_DOMAIN=app.example.com   # or leave unset for host-only
+RUNEGATE_SESSION_COOKIE_NAME=runegate_id
+
+RUST_LOG=info
+RUNEGATE_LOG_FORMAT=json
+```
+
+Start and enable:
+
+```bash
+sudo systemctl start runegate
+sudo systemctl enable runegate
+```
+
+### 3) Nginx (TLS)
+
+Example Nginx config to terminate TLS and proxy to Runegate:
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name app.example.com;
+
+  ssl_certificate     /etc/letsencrypt/live/app.example.com/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/app.example.com/privkey.pem;
+
+  # Optional: HSTS
+  # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+  location / {
+    proxy_pass http://127.0.0.1:7870;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    proxy_read_timeout 300s;
+    proxy_send_timeout 60s;
+    client_max_body_size 50m;
+  }
+}
+
+server {
+  listen 80;
+  server_name app.example.com;
+  return 301 https://$host$request_uri;
+}
+```
+
+Notes:
+- Use a single `location /` that proxies to Runegate (no `location /proxy/`).
+- Keep `RUNEGATE_BASE_URL` in sync with the public URL.
+- Leave `RUNEGATE_COOKIE_DOMAIN` unset for host-only cookies unless a parent domain is needed.
+- Run a single Runegate instance (sessions are in-memory). For HA, consider a shared session store.
+- Toggle debug endpoints with `RUNEGATE_DEBUG_ENDPOINTS` (recommended off in production).
+
+### 4) Sanity checks
+
+After deploy, verify:
+
+```bash
+curl -I https://app.example.com/health
+curl https://app.example.com/rate_limit_info
+```
+
+Login flow:
+- Click magic link.
+- You should be redirected to `/proxy/` and land on the target app.
+
+Troubleshooting endpoints (for temporary use):
+- `https://app.example.com/debug/cookies` – shows client cookies as seen by Runegate.
+- `https://app.example.com/debug/session` – shows server-side session view.
+- `https://app.example.com/debug/protected` – passes through auth middleware; returns 200 only if authenticated.
+
+Security tip: Restrict `location /debug/` in Nginx to trusted IPs, or remove these routes after validation.
+
+---
+
 ## 🛡️ Security Best Practices
 
 Deploying any application, including Runegate, requires careful attention to security. Here are some best practices to ensure your Runegate deployment is as secure as possible:
@@ -634,3 +791,108 @@ Runegate is designed for simplicity and security when exposing private tools to 
 This project is licensed under the [Apache License 2.0](LICENSE).
 
 Copyright 2025 Aivolution GmbH
+---
+
+## ↪️ Migrating From Path-Based to Subdomain
+
+Earlier versions could appear to work behind a path (e.g., `example.com/app`), but reliable operation requires a dedicated subdomain due to cookie scope, redirects, and proxy prefix handling. The current design targets subdomain deployment by default.
+
+Steps to migrate:
+- DNS: create `app.example.com` pointing to your VPS.
+- Nginx: create a new vhost for `app.example.com` with a single `location /` proxying to Runegate.
+- Runegate config:
+  - Set `RUNEGATE_BASE_URL=https://app.example.com`.
+  - Leave `RUNEGATE_COOKIE_DOMAIN` unset (host-only) unless you need a parent domain.
+  - Keep `RUNEGATE_TARGET_SERVICE=http://127.0.0.1:7860`.
+- Remove any path-based rewrites (e.g., `location /app/`) that previously attempted to “mount” Runegate under a path.
+
+Note on path-based setups:
+- Path-based routing (`example.com/app`) is not supported out-of-the-box. Supporting it would require a configurable base path for all routes, cookie path scoping, and adjusted proxy stripping logic. If you require this, open an issue — it can be added behind a feature flag, but subdomain routing is recommended for simplicity and reliability.
+
+---
+
+## 🪪 Identity To Target
+
+When Runegate authenticates a user, you may want the downstream target service to know who the user is (e.g., to restore per-user state). There are two approaches:
+
+- Headers mode (implemented): inject identity headers into proxied requests
+- JWT mode (future): inject a short‑lived signed token the target can verify
+
+### Headers Mode (Implemented)
+
+- Enable with `RUNEGATE_IDENTITY_HEADERS=true` (default true).
+- For authenticated requests, Runegate injects these headers and strips any client‑supplied versions:
+  - `X-Runegate-Authenticated: true|false`
+  - `X-Runegate-User: <email>`
+  - `X-Forwarded-User: <email>`
+  - `X-Forwarded-Email: <email>`
+- Target guidance: read `X-Forwarded-User` or `X-Forwarded-Email` to associate a request with a user.
+- Security notes:
+  - Keep the target internal (e.g., `127.0.0.1:7860`) so only Runegate can reach it.
+  - Do not trust identity headers from the public internet; Runegate strips/re‑injects them.
+
+### JWT Mode (Future Enhancement)
+
+For stronger trust across multiple services, Runegate can inject a short‑lived JWT, signed with a dedicated keypair.
+
+- Request header: `Authorization: Bearer <jwt>` (or a custom header like `X-Runegate-JWT`).
+- Claims (example):
+
+```json
+{
+  "sub": "user@example.com",
+  "email": "user@example.com",
+  "iat": 1710000000,
+  "exp": 1710000600,
+  "iss": "runegate",
+  "aud": "your-target",
+  "sid": "optional-session-id"
+}
+```
+
+- Recommended algorithms: `RS256` or `EdDSA` (Ed25519). Targets only need the public key.
+- Rotation: include a `kid` header; targets can fetch a JWKS or be provisioned with the new public key.
+
+Planned environment variables (subject to change):
+
+```env
+# Select identity mode: headers | jwt | none
+RUNEGATE_IDENTITY_MODE=jwt
+
+# JWT algorithm: RS256 | EdDSA | HS256
+RUNEGATE_DOWNSTREAM_JWT_ALG=RS256
+
+# TTL (seconds) for downstream JWTs
+RUNEGATE_DOWNSTREAM_JWT_TTL=600
+
+# Issuer and audience
+RUNEGATE_DOWNSTREAM_JWT_ISS=runegate
+RUNEGATE_DOWNSTREAM_JWT_AUD=your-target
+
+# Where to place the token
+RUNEGATE_DOWNSTREAM_JWT_HEADER=Authorization
+RUNEGATE_DOWNSTREAM_JWT_BEARER=true   # prefix with "Bearer "
+
+# Keying (choose one set based on the algorithm)
+# RS256 / EdDSA (preferred): Runegate signs with private key; targets verify with public key
+RUNEGATE_DOWNSTREAM_JWT_PRIVATE_KEY_PATH=/etc/runegate/keys/downstream_private.pem
+# Optional inline alternative
+# RUNEGATE_DOWNSTREAM_JWT_PRIVATE_KEY_BASE64=...
+
+# HS256 (shared secret; simpler but less isolated trust)
+# RUNEGATE_DOWNSTREAM_JWT_SECRET=your-very-strong-shared-secret
+
+# Optional JWKS publication (if you want targets to fetch keys)
+# RUNEGATE_DOWNSTREAM_JWKS_ENABLED=false
+# RUNEGATE_DOWNSTREAM_JWKS_PATH=/jwks.json
+```
+
+Target verification sketch:
+
+- Python (PyJWT, RS256): load the public key, call `jwt.decode(token, public_key, algorithms=["RS256"], audience="your-target", issuer="runegate")`.
+- Node (jose, Ed25519): `jwtVerify(token, publicKey, { algorithms: ["EdDSA"], audience: "your-target", issuer: "runegate" })`.
+
+Security notes:
+- Use a separate downstream keypair/secret; do not reuse your magic‑link JWT secret.
+- Keep tokens short‑lived (5–10 minutes) and consider including a `sid` claim for optional state binding.
+- Ensure targets are not publicly reachable; all traffic should flow via Runegate.

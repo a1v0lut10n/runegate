@@ -1,9 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
-use runegate::auth::{create_token, verify_token, get_jwt_secret};
+use runegate::auth::{create_token, verify_token, get_jwt_secret, get_magic_link_expiry};
 use std::env;
+
+/// Load environment file from multiple possible locations
+fn load_env_file() {
+    // Try multiple locations for the environment file
+    // 1. First try the system-installed location (for deployed environments)
+    // 2. Then try the local development path
+    let env_paths = [
+        "/etc/runegate/runegate.env",  // System-installed path
+        ".env",                       // Development path
+    ];
+    
+    // Try each path until one works
+    for path in &env_paths {
+        match dotenvy::from_path(path) {
+            Ok(_) => {
+                println!("DEBUG: Loaded environment configuration from {}", path);
+                return;
+            },
+            Err(_) => {
+                // Silent - we'll try the next path
+            }
+        }
+    }
+    
+    // If no .env file found, that's okay - environment variables can still be set directly
+    println!("DEBUG: No .env file found, using system environment variables only");
+}
 
 // A simple test script to generate and validate JWT tokens for testing
 fn main() {
+    // Load .env file from multiple locations (essential for consistent JWT secrets)
+    load_env_file();
+    
     // Parse command-line arguments
     let args: Vec<String> = env::args().collect();
     
@@ -24,8 +54,9 @@ fn main() {
     
     match action.as_ref() {
         "create" => {
-            // Create a token with 15 minutes expiry
-            match create_token(email, 15) {
+            // Create a token with configured expiry
+            let expiry_minutes = get_magic_link_expiry();
+            match create_token(email, expiry_minutes) {
                 Ok(token) => {
                     println!("✅ JWT Token generated for {}", email);
                     println!("\nToken: {}", token);
@@ -37,7 +68,7 @@ fn main() {
                     
                     println!("\n📋 For testing with curl:");
                     println!("curl -v \"{}\"", auth_url);
-                    println!("\n⚠️ Note: This token will expire in 15 minutes.");
+                    println!("\n⚠️ Note: This token will expire in {} minutes.", expiry_minutes);
                     
                     // Immediately verify the token for debugging
                     println!("\n🔍 Attempting immediate verification:");

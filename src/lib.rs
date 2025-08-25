@@ -2,7 +2,8 @@
 pub mod email;
 pub mod send_magic_link;
 pub mod auth;
-pub mod proxy;
 pub mod logging;
-pub mod middleware;
 pub mod rate_limit;
+pub mod memory_session_store;
+pub mod middleware;
+pub mod proxy;

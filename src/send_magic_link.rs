@@ -9,10 +9,12 @@ pub fn send_magic_link(
     config: &EmailConfig,
     recipient_email: &str,
     login_url: &str,
+    expiry_minutes: u64,
 ) -> Result<(), Box<dyn Error>> {
     let body = config
         .body_template
-        .replace("{login_url}", login_url);
+        .replace("{login_url}", login_url)
+        .replace("{expiry_minutes}", &expiry_minutes.to_string());
 
     let email = Message::builder()
         .from(config.from_address.parse::<Mailbox>()?)
