@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError};
+use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError, errors::ErrorKind};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{instrument, warn, error};
+use tracing::{instrument, warn, error, info};
 use rand::Rng;
 
 // Environment variable names
@@ -65,13 +65,45 @@ pub fn create_token(email: &str, expiry_minutes: u64) -> Result<String, AuthErro
 #[instrument(skip(token), fields(token_truncated = %format!("{}..", &token.chars().take(10).collect::<String>())))]
 pub fn verify_token(token: &str) -> Result<String, JwtError> {
     let secret = get_jwt_secret();
-    let token_data = decode::<Claims>(
+    info!("[JWT_DEBUG] verify_token called with secret length: {} bytes", secret.len());
+    info!("[JWT_DEBUG] Token length: {} chars", token.len());
+    
+    // Create validation with debug info
+    let validation = Validation::default();
+    info!("[JWT_DEBUG] Using validation settings: algorithms={:?}, validate_exp={}, validate_nbf={}", 
+          validation.algorithms, validation.validate_exp, validation.validate_nbf);
+    
+    match decode::<Claims>(
         token,
         &DecodingKey::from_secret(&secret),
-        &Validation::default(),
-    )?;
-    
-    Ok(token_data.claims.sub)
+        &validation,
+    ) {
+        Ok(token_data) => {
+            info!("[JWT_DEBUG] Token decoded successfully");
+            info!("[JWT_DEBUG] Claims - sub: {}, exp: {}, iat: {}", 
+                  token_data.claims.sub, token_data.claims.exp, token_data.claims.iat);
+            
+            // Check if token is expired manually for debugging
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as usize;
+            info!("[JWT_DEBUG] Current timestamp: {}, token exp: {}, diff: {} seconds", 
+                  now, token_data.claims.exp, token_data.claims.exp as i64 - now as i64);
+            
+            Ok(token_data.claims.sub)
+        }
+        Err(e) => {
+            error!("[JWT_DEBUG] Token validation failed: {:?}", e);
+            match e.kind() {
+                ErrorKind::ExpiredSignature => error!("[JWT_DEBUG] Token expired"),
+                ErrorKind::InvalidSignature => error!("[JWT_DEBUG] Invalid signature"),
+                ErrorKind::InvalidToken => error!("[JWT_DEBUG] Invalid token format"),
+                _ => error!("[JWT_DEBUG] Other JWT error: {}", e),
+            }
+            Err(e)
+        }
+    }
 }
 
 /// Generates a magic link URL for authentication

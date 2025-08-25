@@ -1,6 +1,13 @@
 /target
 /config/email.toml
 /cookies.txt
+/.env.production
+/.test_server_pid
+/_test_server_pid
+/_test_server.log
+/test_server.log
+/headers.txt
 *.code-workspace
 .test_server_pid
+.env
 *.log
