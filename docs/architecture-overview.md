@@ -10,7 +10,7 @@ This document provides an architectural overview of the Runegate system — a se
 Customer Browser
       │
       ▼
-https://example.com/app-path
+https://app.example.com
       │
    ┌──┴─────────────────────┐
    │   Nginx (VPS)          │
@@ -22,18 +22,18 @@ https://example.com/app-path
       └────────┬────────────┘
                ▼
    ┌────────────────────────────┐
-   │ Reverse proxy to Gradio UI │
+   │ Reverse proxy to target UI │
    └─────┬───────────┬──────────┘
          ▼           ▼
      WireGuard     Rathole
         VPN        Tunnel
          │           │
          ▼           ▼
-     ┌─────────────────────┐
-     │  Private Machine    │
-     │   (aibox)           │
-     │  Gradio App         │
-     └─────────────────────┘
+     ┌───────────────────────────┐
+     │  Private Machine          │
+     │   (aibox)                 │     
+     │  Target App (e.g., Gradio)│
+     └───────────────────────────┘
 ```
 
 ---
@@ -42,8 +42,8 @@ https://example.com/app-path
 
 | Component        | Role |
 |------------------|------|
-| `nginx`          | Front-facing webserver with TLS termination for `example.com` |
-| `runegate`       | Rust-based identity/auth proxy serving `/app-path` |
+| `nginx`          | Front-facing webserver with TLS termination for `app.example.com` |
+| `runegate`       | Rust-based identity/auth proxy serving the subdomain root `/` |
 | `wireguard`      | VPN endpoint to internal network (primary path to aibox) |
 | `rathole-server` | TCP reverse tunnel for fallback access to Gradio |
 | `workspace/`     | Cloned sites + apps (`example.com`, etc.) |
@@ -52,13 +52,13 @@ https://example.com/app-path
 
 ## 🛡️ Authentication Flow
 
-1. Customer visits: `https://example.com/app-path`
-2. Nginx routes to `runegate` running on `localhost:7870`
+1. Customer visits: `https://app.example.com`
+2. Nginx routes all requests to `runegate` running on `localhost:7870`
 3. Runegate checks for valid session or sends magic link
 4. Email sent using Gmail + TLS via `lettre` (config in `email.toml`)
 5. Customer clicks link → token is validated
 6. Authenticated session is established (JWT or cookie)
-7. Proxy begins forwarding to internal Gradio app
+7. Proxy begins forwarding to the internal target app
 
 ---
 
@@ -77,17 +77,15 @@ https://example.com/app-path
 ```nginx
 server {
     listen 443 ssl;
-    server_name example.com;
+    server_name app.example.com;
 
-    location /app-path/ {
-        proxy_pass http://localhost:7870/;
+    # Forward all requests on the subdomain to Runegate
+    location / {
+        proxy_pass http://localhost:7870;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    location / {
-        root /var/www/example.com;
-        index index.html;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -142,7 +140,7 @@ server {
 
 3. **Verify Connection**: Ensure the proxy can reach the Gradio app
 
-Once deployed, users can access the Gradio app securely through the `/app-path` endpoint with email-based authentication.
+Once deployed, users access the protected app securely via the dedicated subdomain (for example, `https://app.example.com`) with email-based authentication.
 
 ---
 
@@ -158,3 +156,11 @@ Once deployed, users can access the Gradio app securely through the `/app-path` 
 ---
 
 This setup exposes only the authentication and proxy layer to the public, while keeping all sensitive processing on a private, hardened machine.
+
+---
+
+## 📌 Notes on Routing Model
+
+- Recommended: Use a dedicated subdomain (for example, `app.example.com`) that proxies all paths to Runegate. This simplifies cookie scoping, redirects, and proxying.
+- Path-based mounting (for example, `example.com/app`) is not supported by default and would require explicit base-path handling behind a feature flag.
+- Cookie domain: By default, Runegate issues host-only cookies. You can override with `RUNEGATE_COOKIE_DOMAIN` if you need a broader scope. Ensure `RUNEGATE_BASE_URL` reflects the public subdomain for correct magic links.
