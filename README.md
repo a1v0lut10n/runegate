@@ -163,6 +163,22 @@ Target service reachability: Ensure Runegate can reach your protected app (e.g.,
 
 ---
 
+## 📡 Streaming Responses (Large Transfers)
+
+Runegate can stream upstream responses to clients without buffering when `RUNEGATE_STREAM_RESPONSES` is enabled. This improves long‑lived endpoints (upload progress, heartbeats) and very large downloads.
+
+- Enable in environment: `RUNEGATE_STREAM_RESPONSES=true`
+- nginx recommendations for large transfers:
+  - `client_max_body_size 10G;`
+  - `proxy_request_buffering off;` (stream upload bodies to Runegate)
+  - `proxy_buffering off;` (avoid buffering responses at nginx)
+  - `proxy_read_timeout 600s; proxy_send_timeout 600s;`
+- Target app behind proxies (Uvicorn/Starlette/FastAPI/Gradio):
+  - Start with `--proxy-headers --forwarded-allow-ips='*'` so absolute URLs and scheme match the external origin.
+
+When disabled (default), Runegate buffers upstream responses before returning them. Enable streaming for better UX on progress/heartbeat endpoints and to support multi‑GB downloads with lower memory usage.
+
+
 ## ⚙️ Configuration
 
 ### Email Setup

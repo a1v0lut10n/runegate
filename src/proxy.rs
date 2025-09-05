@@ -5,6 +5,7 @@ use actix_web::{
 };
 // awc HTTP client; use ClientBuilder for custom timeouts
 use std::time::Duration;
+use futures::TryStreamExt;
 use tracing::{error, debug, instrument};
 
 /// Environment variable for the target service URL
@@ -141,13 +142,26 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     ) {
         client_res.insert_header((header_name.clone(), header_value.clone()));
     }
-    // Read the upstream response body (suitable for typical JSON/short responses)
-    let body = forwarded_res.body().await.map_err(|e| {
-        error!(error = %e, "Failed to read response body from target service");
-        actix_web::error::ErrorBadGateway(e)
-    })?;
+    // Feature flag: stream upstream responses to client without buffering.
+    // Enables long-lived endpoints (heartbeat, progress, large downloads) to behave smoothly.
+    let stream_responses = std::env::var("RUNEGATE_STREAM_RESPONSES")
+        .map(|v| matches!(v.as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false);
 
-    Ok(client_res.body(body))
+    if stream_responses {
+        let stream = forwarded_res.map_err(|e| {
+            error!(error = %e, "Upstream body stream error");
+            actix_web::error::ErrorBadGateway(e)
+        });
+        Ok(client_res.streaming(stream))
+    } else {
+        // Buffer body (default behavior)
+        let body = forwarded_res.body().await.map_err(|e| {
+            error!(error = %e, "Failed to read response body from target service");
+            actix_web::error::ErrorBadGateway(e)
+        })?;
+        Ok(client_res.body(body))
+    }
 }
 
 /// Gets the target service URL from environment or uses default
