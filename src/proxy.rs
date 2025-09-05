@@ -77,7 +77,20 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
             forwarded_req = forwarded_req.insert_header((header::COOKIE, filtered));
         }
     }
-    
+    // Ensure upstream sees the public host so it generates absolute URLs correctly
+    // Prefer Host from the original request, falling back to connection_info host
+    if let Some(host_val) = req.headers().get(header::HOST).cloned() {
+        forwarded_req = forwarded_req.insert_header((header::HOST, host_val));
+    } else {
+        let host = req.connection_info().host().to_string();
+        forwarded_req = forwarded_req.insert_header((header::HOST, host));
+    }
+
+    // Ensure X-Forwarded-Proto reflects the external scheme (typically https behind nginx)
+    if let Some(xfp) = req.headers().get("X-Forwarded-Proto").cloned() {
+        forwarded_req = forwarded_req.insert_header(("X-Forwarded-Proto", xfp));
+    }
+
     // Forward the original client IP if available
     if let Some(client_ip) = req.connection_info().realip_remote_addr() {
         forwarded_req = forwarded_req.insert_header((header::FORWARDED, format!("for={}", client_ip)));
@@ -128,16 +141,12 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     ) {
         client_res.insert_header((header_name.clone(), header_value.clone()));
     }
-    
-    // Get the response body
+    // Read the upstream response body (suitable for typical JSON/short responses)
     let body = forwarded_res.body().await.map_err(|e| {
         error!(error = %e, "Failed to read response body from target service");
         actix_web::error::ErrorBadGateway(e)
     })?;
-    
-    debug!(body_size = body.len(), "Returning response to client");
-    
-    // Return the complete response
+
     Ok(client_res.body(body))
 }
 
