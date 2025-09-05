@@ -170,7 +170,7 @@ systemctl daemon-reload
 echo "Step 8: Setting up nginx configuration (optional)..."
 if [ "$SETUP_NGINX" = true ]; then
     if command -v nginx &> /dev/null; then
-        if [ -d "$REPO_DIR/deploy/nginx" ] && [ -f "$REPO_DIR/deploy/nginx/runegate.conf" ]; then
+        if [ -d "$REPO_DIR/deploy/nginx" ] && [ -f "$REPO_DIR/deploy/nginx/runegate-nginx.conf" ]; then
             echo "  Installing Runegate nginx configuration..."
             
             # Create sites-available directory if it doesn't exist
@@ -178,11 +178,11 @@ if [ "$SETUP_NGINX" = true ]; then
             mkdir -p /etc/nginx/sites-enabled
             
             # Copy the nginx configuration
-            cp "$REPO_DIR/deploy/nginx/runegate.conf" /etc/nginx/sites-available/
+            cp "$REPO_DIR/deploy/nginx/runegate-nginx.conf" /etc/nginx/sites-available/
             
             # Enable the site if not already enabled
-            if [ ! -L /etc/nginx/sites-enabled/runegate.conf ]; then
-                ln -s /etc/nginx/sites-available/runegate.conf /etc/nginx/sites-enabled/
+            if [ ! -L /etc/nginx/sites-enabled/runegate-nginx.conf ]; then
+                ln -s /etc/nginx/sites-available/runegate-nginx.conf /etc/nginx/sites-enabled/
                 echo "  Nginx site enabled. Don't forget to update the server_name in the config."
             fi
             
@@ -194,7 +194,7 @@ if [ "$SETUP_NGINX" = true ]; then
                 echo "  ⚠️  Warning: Nginx configuration test failed. Please check the configuration."
             fi
         else
-            echo "  ⚠️  Warning: Runegate nginx configuration not found at $REPO_DIR/deploy/nginx/runegate.conf"
+            echo "  ⚠️  Warning: Runegate nginx configuration not found at $REPO_DIR/deploy/nginx/runegate-nginx.conf"
             echo "     You will need to set up nginx forwarding manually."
         fi
     else

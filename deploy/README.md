@@ -227,11 +227,7 @@ openssl rand -base64 32 | tr -d '\n'
 
 ## Nginx Configuration
 
-Starting with version 0.1.2, Runegate includes an optional nginx configuration setup. This is particularly useful when you want to:
-
-- Serve Runegate under a specific path prefix (e.g., `/auth/` or `/runegate/`)
-- Enable SSL/TLS termination
-- Use nginx as a reverse proxy in front of Runegate
+Runegate ships with an optional nginx reference configuration to place nginx in front of Runegate for TLS termination and reverse proxying. Recommended deployment is a dedicated subdomain (e.g., `app.example.com`) rather than a path prefix.
 
 ### Installation Script Integration
 
@@ -252,26 +248,26 @@ This will:
 
 ### HTTPS and SSL Configuration
 
-When using Runegate in a production environment with SSL:
+When using Runegate in production with SSL/TLS:
 
-1. Ensure your nginx configuration handles SSL termination with proper certificates
-2. Set `RUNEGATE_BASE_URL=https://your-domain.com` in your environment configuration
-3. Restart the Runegate service to apply the changes
-
-This ensures magic links in emails will use HTTPS URLs, which is important for security in production.
+1. Terminate TLS at nginx with valid certificates (e.g., Let’s Encrypt).
+2. Redirect HTTP (port 80) to HTTPS (port 443) and proxy only on 443.
+3. Set `RUNEGATE_BASE_URL=https://your-domain.com` so magic links use the public HTTPS URL.
+4. Keep `RUNEGATE_COOKIE_DOMAIN` unset unless you need cross-subdomain cookies.
+5. Restart Runegate after environment changes.
 
 ### Manual Setup
 
 1. Copy the template configuration:
 
    ```bash
-   sudo cp /opt/runegate/deploy/nginx/runegate.conf /etc/nginx/sites-available/
+   sudo cp /opt/runegate/deploy/nginx/runegate-nginx.conf /etc/nginx/sites-available/
    ```
 
 2. Edit the configuration to suit your needs:
 
    ```bash
-   sudo nano /etc/nginx/sites-available/runegate.conf
+   sudo nano /etc/nginx/sites-available/runegate-nginx.conf
    ```
 
    > **Important**: Update the `server_name` directive and adjust any other settings as needed.
@@ -279,7 +275,7 @@ This ensures magic links in emails will use HTTPS URLs, which is important for s
 3. Enable the site:
 
    ```bash
-   sudo ln -s /etc/nginx/sites-available/runegate.conf /etc/nginx/sites-enabled/
+   sudo ln -s /etc/nginx/sites-available/runegate-nginx.conf /etc/nginx/sites-enabled/
    ```
 
 4. Test and reload nginx:
@@ -289,27 +285,11 @@ This ensures magic links in emails will use HTTPS URLs, which is important for s
    sudo systemctl reload nginx
    ```
 
-### Path Prefix Configuration
+### Path Prefixes (Not Recommended)
 
-If you want to serve Runegate under a specific path prefix (e.g., `/auth/`), modify your nginx configuration:
+Runegate is designed to sit at the root of a dedicated subdomain (e.g., `app.example.com`). Path-prefix deployments (e.g., `example.com/app`) complicate cookie scoping and redirects and are not supported by default. Prefer a subdomain and host-only cookies for the most reliable behavior.
 
-```nginx
-# Example for serving Runegate under /auth/ path
-location /auth/ {
-    proxy_pass http://127.0.0.1:7870/;
-    
-    # Standard headers
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    
-    # Fix redirects - important!
-    proxy_redirect / /auth/;
-}
-```
-
-> **Note**: Runegate 0.1.1+ automatically detects when it's running behind a proxy with a path prefix and adjusts API calls accordingly. No additional configuration is needed.
+If you must use a path prefix, you will need to handle cookie scope, redirects, and proxy path rewriting carefully. This is outside the scope of the provided templates.
 
 ## Security Best Practices
 
@@ -318,3 +298,143 @@ location /auth/ {
 3. Set up SSL/TLS termination with nginx in production environments
 4. Review the systemd hardening parameters in `runegate.service`
 5. Implement a firewall (ufw) and only expose necessary ports
+
+## Migration Notes: nginx config rename
+
+If you previously installed the nginx site using the legacy filename `runegate.conf`, migrate to the new `runegate-nginx.conf`:
+
+1. Remove the old site symlink and file (if present):
+
+   ```bash
+   sudo rm -f /etc/nginx/sites-enabled/runegate.conf
+   sudo rm -f /etc/nginx/sites-available/runegate.conf
+   ```
+
+2. Install the new template and enable it:
+
+   ```bash
+   sudo cp /opt/runegate/deploy/nginx/runegate-nginx.conf /etc/nginx/sites-available/
+   sudo ln -s /etc/nginx/sites-available/runegate-nginx.conf /etc/nginx/sites-enabled/
+   ```
+
+3. Test and reload nginx:
+
+   ```bash
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+Notes:
+- Keep the HTTP (port 80) server minimal; if using Certbot's nginx authenticator, it will inject the ACME challenge location during renewals.
+- Ensure your `RUNEGATE_BASE_URL` is set to your public HTTPS origin (e.g., `https://app.example.com`).
+
+## Optional: Systemd override snippet
+
+The provided unit (`deploy/systemd/runegate.service`) already loads `/etc/runegate/runegate.env` and restarts on failure. If you want to add or tweak settings without editing the installed unit, create a drop‑in override:
+
+```bash
+sudo systemctl edit runegate
+```
+
+This opens an editor for `/etc/systemd/system/runegate.service.d/override.conf`. Example contents:
+
+```ini
+[Service]
+# Ensure env file is loaded (kept in sync with your deployment)
+EnvironmentFile=/etc/runegate/runegate.env
+
+# Make restarts resilient
+Restart=on-failure
+RestartSec=5
+
+# Optional: Increase file descriptor limit if your target app streams many files
+LimitNOFILE=65536
+
+# Tip: Do not redefine ExecStart here unless you intend to replace it entirely.
+```
+
+Apply and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart runegate
+sudo systemctl status runegate
+```
+
+Logs and verification:
+
+```bash
+sudo journalctl -u runegate -f
+```
+
+## Post‑Reboot Checks (VPS + Target Host)
+
+After reboots, validate that networking (WireGuard), Runegate, nginx, and your target app are all up and reachable.
+
+1) WireGuard (VPS and target box)
+
+```bash
+# Ensure your WireGuard interface (e.g., wg0) is enabled at boot
+sudo systemctl enable wg-quick@wg0
+sudo systemctl start wg-quick@wg0
+sudo systemctl status wg-quick@wg0
+
+# Verify connectivity from the VPS to the target over VPN
+ping -c 3 10.0.0.2
+```
+
+2) Target application auto‑start (on target box)
+
+Ensure your protected app (e.g., Gradio/Uvicorn) is managed by systemd and listens on the VPN interface or `0.0.0.0`.
+
+```bash
+# Example: enable and check your target app
+sudo systemctl enable my-target.service
+sudo systemctl start my-target.service
+sudo systemctl status my-target.service
+
+# Confirm it’s listening on 0.0.0.0:7860 or 10.0.0.2:7860
+ss -ltnp | rg 7860
+```
+
+3) Runegate service (VPS)
+
+```bash
+sudo systemctl enable runegate
+sudo systemctl restart runegate
+sudo systemctl status runegate
+
+# Health check via loopback (bypasses nginx)
+curl -i http://127.0.0.1:7870/health
+```
+
+4) nginx (VPS)
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+sudo systemctl status nginx
+
+# Verify HTTPS → Runegate flow
+curl -I https://your-domain.example.com/health
+```
+
+5) Target reachability from VPS
+
+```bash
+# Verify the VPS can reach the target over WireGuard
+curl -i http://10.0.0.2:7860
+```
+
+6) Certificates (optional, VPS)
+
+```bash
+# If using Certbot, dry-run renewals
+sudo certbot renew --dry-run
+```
+
+If any of these checks fail, inspect logs:
+- Runegate: `sudo journalctl -u runegate -f`
+- nginx: `sudo tail -n 100 /var/log/nginx/error.log`
+- Target app: `sudo journalctl -u my-target.service -f`
+- WireGuard: `sudo journalctl -u wg-quick@wg0 -e`

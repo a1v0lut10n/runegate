@@ -102,6 +102,66 @@ Deployment model: Prefer a dedicated subdomain (for example, `app.example.com`) 
 
 ---
 
+## 🧰 nginx Reverse Proxy (Reference)
+
+When exposing Runegate on the internet, put nginx in front to terminate TLS and forward traffic to Runegate on `127.0.0.1:7870`. Key requirements:
+
+- TLS termination: Serve HTTPS on port 443 and use valid certificates (e.g., Let’s Encrypt).
+- HTTP→HTTPS: Listen on port 80 and redirect all traffic to HTTPS.
+- Proxy headers: Preserve `Host`, `X-Real-IP`, `X-Forwarded-For`, set `X-Forwarded-Proto https`, and forward cookies.
+- WebSockets: Enable upgrade headers and `proxy_http_version 1.1`.
+- No path rewriting: Proxy the root to Runegate root; do not alter paths.
+- Base URL: Set `RUNEGATE_BASE_URL` to the public HTTPS URL (e.g., `https://app.example.com`).
+- Cookies: Leave `RUNEGATE_COOKIE_DOMAIN` unset for host-only cookies unless you require cross-subdomain scope.
+
+Reference nginx config:
+
+```nginx
+# Port 80: redirect to HTTPS
+server {
+    listen 80;
+    server_name app.example.com;
+    return 301 https://$host$request_uri;
+}
+
+# Port 443: TLS termination + reverse proxy
+server {
+    listen 443 ssl http2;
+    server_name app.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/app.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.example.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:7870;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Cookie $http_cookie;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        client_max_body_size 10G;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_redirect off;
+        proxy_buffering off;
+    }
+}
+```
+
+Let’s Encrypt: If you use Certbot with the nginx authenticator, keep the port 80 server minimal. Certbot injects a temporary `/.well-known/acme-challenge/` location during issuance/renewal.
+
+Target service reachability: Ensure Runegate can reach your protected app (e.g., via WireGuard). For Gradio/Uvicorn, bind to `0.0.0.0` or the VPN IP and allow the VPS IP in your firewall.
+
+---
+
 ## ⚙️ Configuration
 
 ### Email Setup
