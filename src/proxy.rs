@@ -4,6 +4,7 @@ use actix_web::{
     http::{header, StatusCode},
 };
 use awc::Client;
+use std::time::Duration;
 use tracing::{error, debug, instrument};
 
 /// Environment variable for the target service URL
@@ -31,8 +32,10 @@ pub async fn proxy_request(req: HttpRequest, mut payload: web::Payload, identity
     
     debug!(target_url = %target_url, forwarded_url = %forwarded_url, "Proxying request");
     
-    // Create a client to forward the request
-    let client = Client::default();
+    // Create a client to forward the request with generous timeout for large uploads
+    let client = awc::ClientBuilder::new()
+        .timeout(Duration::from_secs(600))
+        .finish();
     
     // Build the request to pass through
     let mut forwarded_req = client

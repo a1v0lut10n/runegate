@@ -150,6 +150,7 @@ server {
         client_max_body_size 10G;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
+        proxy_request_buffering off;  # stream large uploads to upstream
         proxy_redirect off;
         proxy_buffering off;
     }
