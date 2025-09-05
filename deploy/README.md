@@ -438,3 +438,48 @@ If any of these checks fail, inspect logs:
 - nginx: `sudo tail -n 100 /var/log/nginx/error.log`
 - Target app: `sudo journalctl -u my-target.service -f`
 - WireGuard: `sudo journalctl -u wg-quick@wg0 -e`
+
+## Reverse Proxy: Starlette/Uvicorn (FastAPI/Gradio)
+
+When running FastAPI/Starlette/Gradio behind Runegate + nginx, ensure the app trusts proxy headers so it generates the correct scheme and absolute URLs (https + public host) and long‑poll endpoints (e.g., heartbeat, upload progress) work reliably.
+
+### Recommended Uvicorn flags
+
+Start your app with proxy header support and bind to VPN/0.0.0.0:
+
+```bash
+uvicorn app:app \
+  --host 0.0.0.0 --port 7860 \
+  --proxy-headers --forwarded-allow-ips='*'
+```
+
+- `--proxy-headers`: Trust `X-Forwarded-*` headers for URL generation.
+- `--forwarded-allow-ips='*'`: Accept `X-Forwarded-*` from the proxy. For tighter control, set this to the VPS IP.
+
+### Using ProxyHeadersMiddleware (code)
+
+Alternatively (or additionally), ensure Starlette honors proxy headers in code:
+
+```python
+from fastapi import FastAPI
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+
+app = FastAPI()
+app.add_middleware(ProxyHeadersMiddleware)
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+```
+
+### Gradio notes
+
+- Launch with: `demo.launch(server_name="0.0.0.0", server_port=7860)` so it listens on the VPN/host interface.
+- Prefer a dedicated subdomain (no path prefix) so no special `root_path` handling is needed.
+- When proxy headers are honored, Gradio should produce absolute links using the public origin (through Runegate), which fixes preview URLs and avoids direct `10.0.0.2:7860` references in the browser.
+
+### Nginx + Runegate recap for proxies
+
+- nginx on the VPS terminates TLS and sets `X-Forwarded-Proto https`.
+- Runegate forwards `Host` and passes through `X-Forwarded-Proto` to the upstream.
+- Ensure long timeouts and streaming are enabled in nginx and Runegate for large uploads and long‑polling.
