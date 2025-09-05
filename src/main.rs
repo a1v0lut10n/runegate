@@ -206,8 +206,8 @@ async fn auth(
 
 
 /// Authentication check and proxy handler
-#[instrument(name = "auth_check_and_proxy", skip(body, session), fields(path = %req.path(), method = %req.method()))]
-async fn auth_check_and_proxy(req: HttpRequest, body: web::Bytes, session: Session) -> Result<HttpResponse, Error> {
+#[instrument(name = "auth_check_and_proxy", skip(payload, session), fields(path = %req.path(), method = %req.method()))]
+async fn auth_check_and_proxy(req: HttpRequest, payload: web::Payload, session: Session) -> Result<HttpResponse, Error> {
     // Check if user is authenticated
     info!("[PROXY_AUTH - EVENT] Checking session for proxy request to: {}", req.path());
     
@@ -229,7 +229,7 @@ async fn auth_check_and_proxy(req: HttpRequest, body: web::Bytes, session: Sessi
     if is_authenticated {
         // User is authenticated, proxy the request and inject identity headers
         let identity_email = session.get::<String>("email").ok().flatten();
-        proxy_request(req, body, identity_email).await
+        proxy_request(req, payload, identity_email).await
     } else {
         // User is not authenticated, redirect to login
         // Detect if we're behind a proxy and construct the correct redirect path
@@ -686,7 +686,7 @@ async fn main() -> std::io::Result<()> {
         }
     })
     .bind("0.0.0.0:7870")?
-    .client_request_timeout(Duration::from_secs(60))
+    .client_request_timeout(Duration::from_secs(600))
     .workers(4)
     .run()
     .await
