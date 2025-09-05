@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use actix_web::{
     web, HttpRequest, HttpResponse, Error,
-    http::{header, StatusCode},
+    http::{header, StatusCode, Method},
 };
-use awc::Client;
+// awc HTTP client; use ClientBuilder for custom timeouts
 use std::time::Duration;
 use tracing::{error, debug, instrument};
 
@@ -14,7 +14,7 @@ const DEFAULT_TARGET_SERVICE: &str = "http://127.0.0.1:7860";
 
 /// Proxy a request to the target service
 #[instrument(skip(payload), fields(method = %req.method(), path = %req.uri().path(), query = %req.uri().query().unwrap_or(""), client_ip = %req.connection_info().realip_remote_addr().unwrap_or("unknown")))]
-pub async fn proxy_request(req: HttpRequest, mut payload: web::Payload, identity_email: Option<String>) -> Result<HttpResponse, Error> {
+pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_email: Option<String>) -> Result<HttpResponse, Error> {
     let target_url = get_target_service_url();
     let session_cookie_name = std::env::var("RUNEGATE_SESSION_COOKIE_NAME").unwrap_or_else(|_| "runegate_id".to_string());
     let identity_headers_enabled = std::env::var("RUNEGATE_IDENTITY_HEADERS")
@@ -95,8 +95,17 @@ pub async fn proxy_request(req: HttpRequest, mut payload: web::Payload, identity
         }
     }
 
-    // Stream the request body to the upstream. This avoids buffering large uploads in memory.
-    let forwarded_req = forwarded_req.send_stream(payload);
+    // For methods that typically have a body, stream it to the upstream.
+    // For GET/HEAD/OPTIONS/DELETE, avoid attaching a (possibly empty) body stream
+    // to prevent some upstreams from hanging while waiting for a body that never comes.
+    let forwarded_req = match *req.method() {
+        Method::POST | Method::PUT | Method::PATCH => {
+            forwarded_req.send_stream(payload)
+        }
+        _ => {
+            forwarded_req.send()
+        }
+    };
     
     // Send the request to the target service
     let mut forwarded_res = forwarded_req.await.map_err(|e| {
