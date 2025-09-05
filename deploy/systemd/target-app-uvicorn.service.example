@@ -1,0 +1,33 @@
+[Unit]
+Description=Target App (Uvicorn/Gradio)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiboxapp
+Group=aiboxapp
+WorkingDirectory=/opt/aibox-app
+Environment="PYTHONUNBUFFERED=1"
+# Optional: app-specific env vars
+EnvironmentFile=-/etc/aibox-app.env
+
+ExecStart=/opt/aibox-app/venv/bin/uvicorn app:app \
+  --host 0.0.0.0 --port 7860 \
+  --proxy-headers --forwarded-allow-ips='*'
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/aibox-app /var/log/aibox-app /tmp
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aibox-app
+
+[Install]
+WantedBy=multi-user.target
+

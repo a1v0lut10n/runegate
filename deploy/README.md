@@ -483,3 +483,85 @@ def health():
 - nginx on the VPS terminates TLS and sets `X-Forwarded-Proto https`.
 - Runegate forwards `Host` and passes through `X-Forwarded-Proto` to the upstream.
 - Ensure long timeouts and streaming are enabled in nginx and Runegate for large uploads and long‑polling.
+
+## Large Uploads & Downloads (Streaming)
+
+For large files (hundreds of MBs to many GBs) and long‑lived endpoints (heartbeat, upload progress):
+
+- In Runegate env (`/etc/runegate/runegate.env`):
+
+  ```env
+  RUNEGATE_STREAM_RESPONSES=true
+  ```
+
+- In nginx TLS server for your domain:
+
+  ```nginx
+  location / {
+      proxy_pass http://127.0.0.1:7870;
+      # Streaming & timeouts
+      client_max_body_size 10G;
+      proxy_request_buffering off;  # stream uploads to Runegate
+      proxy_buffering off;          # avoid buffering responses
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+  }
+  ```
+
+- Ensure the target app trusts proxy headers (see Uvicorn flags above) so absolute URLs and schemes are correct.
+
+These settings reduce memory usage, avoid buffering delays, and keep progress/heartbeat endpoints responsive.
+
+## Example systemd unit: Uvicorn/Gradio target app
+
+This example unit manages a FastAPI/Gradio app served by Uvicorn on the target host (aibox). Adjust paths, user, and module accordingly.
+
+File: `deploy/systemd/target-app-uvicorn.service.example`
+
+```ini
+[Unit]
+Description=Target App (Uvicorn/Gradio)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiboxapp
+Group=aiboxapp
+WorkingDirectory=/opt/aibox-app
+Environment="PYTHONUNBUFFERED=1"
+# Optional: app-specific env vars
+EnvironmentFile=-/etc/aibox-app.env
+
+ExecStart=/opt/aibox-app/venv/bin/uvicorn app:app \
+  --host 0.0.0.0 --port 7860 \
+  --proxy-headers --forwarded-allow-ips='*'
+
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/aibox-app /var/log/aibox-app /tmp
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aibox-app
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install and enable:
+
+```bash
+sudo cp deploy/systemd/target-app-uvicorn.service.example /etc/systemd/system/target-app.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now target-app
+sudo systemctl status target-app
+```
+
+Notes:
+- Ensure your app binds to `0.0.0.0:7860` (or the WireGuard IP) and the firewall allows access from the VPS IP.
+- For Gradio, call `demo.launch(server_name="0.0.0.0", server_port=7860)` inside your app.
