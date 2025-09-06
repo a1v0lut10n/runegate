@@ -644,3 +644,16 @@ net.ipv4.udp_wmem_min = 262144
 Apply with: `sudo sysctl --system`.
 
 See also: `docs/performance-tests.md` for repeatable iperf3 procedures and a full proxy checklist.
+
+### Request access logs
+
+Runegate can log every request via `TracingLogger`, which is useful in development but noisy in production.
+
+- Env: `RUNEGATE_REQUEST_LOGS` (default: off in production, on in development)
+- Recommended prod filters:
+
+```env
+RUST_LOG=runegate=info,actix_web=warn,awc=warn,tracing_actix_web=off
+```
+
+This disables per-request access logs while keeping essential app logs. To reduce logs without disabling entirely, set `tracing_actix_web=warn`.

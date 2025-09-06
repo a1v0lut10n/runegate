@@ -615,6 +615,13 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(2);
     info!("🧵 Workers: {}", workers);
 
+    // Control request access logging via env (off by default in production)
+    let request_logs_enabled = match std::env::var("RUNEGATE_REQUEST_LOGS") {
+        Ok(v) if matches!(v.as_str(), "true" | "1" | "yes" | "on") => true,
+        Ok(v) if matches!(v.as_str(), "false" | "0" | "no" | "off") => false,
+        _ => std::env::var(RUNEGATE_ENV).as_deref() != Ok("production"),
+    };
+
     HttpServer::new(move || {
         // Determine cookie_secure setting
         let secure_cookie = match std::env::var(RUNEGATE_SECURE_COOKIE_VAR).as_deref() {
@@ -655,7 +662,6 @@ async fn main() -> std::io::Result<()> {
 
         {
             let mut app = App::new()
-                .wrap(TracingLogger::default())
                 // Ensure SessionMiddleware runs before AuthMiddleware so session is available in auth checks
                 .wrap(AuthMiddleware::new())
                 .wrap(
@@ -682,6 +688,10 @@ async fn main() -> std::io::Result<()> {
                     .service(web::resource("/debug/session").route(web::get().to(debug_session)))
                     .service(web::resource("/debug/cookies").route(web::get().to(debug_cookies)))
                     .service(web::resource("/debug/protected").route(web::get().to(debug_protected)));
+            }
+
+            if request_logs_enabled {
+                app = app.wrap(TracingLogger::default());
             }
 
             app
