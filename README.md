@@ -75,6 +75,7 @@ runegate/
 Additional documentation is available in the `docs/` directory:
 
 - [Architecture Overview](docs/architecture-overview.md) - System design and deployment architecture
+- [Performance Tests](docs/performance-tests.md) - Repeatable iperf3 procedures, firewall rules, and proxy tuning
 
 ---
 
