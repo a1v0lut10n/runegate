@@ -21,7 +21,7 @@ It authenticates users without passwords by sending them time-limited login link
 - 📊 Structured logging with `tracing` for observability
 - 🛡️ Configurable rate limiting for enhanced security
 - 🪪 Identity to target via headers (optional)
-- 📡 Streaming upstream responses for progress/large downloads (feature-flag)
+ - 📡 Streaming upstream responses for progress/large downloads (default ON)
 
 ---
 
@@ -36,7 +36,7 @@ It authenticates users without passwords by sending them time-limited login link
 - Added debug endpoints for troubleshooting: `/debug/session`, `/debug/cookies`, `/debug/protected`
 - Debug endpoints can now be toggled via the `RUNEGATE_DEBUG_ENDPOINTS` environment variable.
 - Identity headers injection (opt-in): When enabled, Runegate injects `X-Runegate-Authenticated`, `X-Runegate-User`, `X-Forwarded-User`, and `X-Forwarded-Email` for authenticated requests and strips any client-supplied versions of these headers.
-- Streaming responses (feature-flag): Enable `RUNEGATE_STREAM_RESPONSES=true` to stream upstream responses to clients (improves long‑poll endpoints and very large downloads).
+- Streaming responses (default ON): Stream upstream responses to clients (improves long‑poll endpoints and very large downloads). Disable with `RUNEGATE_STREAM_RESPONSES=false`.
 
 ---
 
@@ -168,9 +168,9 @@ Target service reachability: Ensure Runegate can reach your protected app (e.g.,
 
 ## 📡 Streaming Responses (Large Transfers)
 
-Runegate can stream upstream responses to clients without buffering when `RUNEGATE_STREAM_RESPONSES` is enabled. This improves long‑lived endpoints (upload progress, heartbeats) and very large downloads.
+Runegate streams upstream responses to clients without buffering by default. This improves long‑lived endpoints (upload progress, heartbeats) and very large downloads.
 
-- Enable in environment: `RUNEGATE_STREAM_RESPONSES=true`
+- Disable (if needed): set `RUNEGATE_STREAM_RESPONSES=false`
 - nginx recommendations for large transfers:
   - `client_max_body_size 10G;`
   - `proxy_request_buffering off;` (stream upload bodies to Runegate)

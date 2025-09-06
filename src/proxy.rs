@@ -150,9 +150,11 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     }
     // Feature flag: stream upstream responses to client without buffering.
     // Enables long-lived endpoints (heartbeat, progress, large downloads) to behave smoothly.
-    let stream_responses = std::env::var("RUNEGATE_STREAM_RESPONSES")
-        .map(|v| matches!(v.as_str(), "true" | "1" | "yes" | "on"))
-        .unwrap_or(false);
+    // Default ON: stream responses unless explicitly disabled
+    let stream_responses = match std::env::var("RUNEGATE_STREAM_RESPONSES") {
+        Ok(v) if matches!(v.as_str(), "false" | "0" | "no" | "off") => false,
+        _ => true,
+    };
 
     if stream_responses {
         let stream = forwarded_res.map_err(|e| {

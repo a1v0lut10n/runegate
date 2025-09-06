@@ -619,6 +619,9 @@ gzip off;
 proxy_set_header Accept-Encoding "";  # prevent upstream compression
 ```
 
+Streaming behavior in Runegate:
+- Default: response streaming is enabled. To disable (rare), set `RUNEGATE_STREAM_RESPONSES=false` in `/etc/runegate/runegate.env`.
+
 ### System TCP/UDP recommendations (VPS & target)
 
 - Prefer BBR + fq:
