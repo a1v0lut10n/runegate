@@ -565,3 +565,79 @@ sudo systemctl status target-app
 Notes:
 - Ensure your app binds to `0.0.0.0:7860` (or the WireGuard IP) and the firewall allows access from the VPS IP.
 - For Gradio, call `demo.launch(server_name="0.0.0.0", server_port=7860)` inside your app.
+
+## Tuning (Performance & Resources)
+
+This section summarizes high‑value knobs for stable performance and low memory on small VPS instances.
+
+### Runegate workers
+
+- Env: `RUNEGATE_WORKERS` (default: `2`).
+- Guidance: set to the number of vCPUs for typical loads. On a 2 vCPU VPS, `2` is a solid default; increase only if you observe saturation under load.
+
+### Release build profile
+
+Release builds are optimized with:
+
+```toml
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+```
+
+And CPU‑specific optimizations are enabled by default for local builds:
+
+```toml
+# .cargo/config.toml
+[build]
+rustflags = ["-C", "target-cpu=native"]
+```
+
+Notes:
+- `target-cpu=native` ties the binary to the build host’s CPU. Build on the VPS you deploy to, or override it in your environment if cross‑compiling.
+- To override per build: `RUSTFLAGS="-C target-cpu=native" cargo build --release`.
+
+### Upstream HTTP client (awc)
+
+Runegate reuses upstream connections and sets conservative timeouts for large uploads/long‑poll endpoints:
+- Connect timeout: 10s; keep‑alive: 15s; disconnect timeout: 2s; overall client timeout: 600s.
+
+### nginx streaming & timeouts (recap)
+
+In the TLS vhost `location /`:
+
+```nginx
+client_max_body_size 10G;
+proxy_request_buffering off;  # stream uploads to Runegate
+proxy_buffering off;          # avoid buffering responses
+proxy_read_timeout 600s;
+proxy_send_timeout 600s;
+gzip off;
+proxy_set_header Accept-Encoding "";  # prevent upstream compression
+```
+
+### System TCP/UDP recommendations (VPS & target)
+
+- Prefer BBR + fq:
+
+```conf
+# /etc/sysctl.d/99-net.conf
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+```
+
+- Larger socket buffers for higher‑latency paths:
+
+```conf
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.udp_rmem_min = 262144
+net.ipv4.udp_wmem_min = 262144
+```
+
+Apply with: `sudo sysctl --system`.
+
+See also: `docs/performance-tests.md` for repeatable iperf3 procedures and a full proxy checklist.
