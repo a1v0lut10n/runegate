@@ -146,43 +146,43 @@ async fn auth(
     match verify_token(token) {
         Ok(email) => {
             // If token is valid, mark the session as authenticated
-            info!("[AUTH_FLOW] About to set session data for user: {}", email);
+            debug!("[AUTH_FLOW] About to set session data for user: {}", email);
             
             // Check initial session state
-            info!("[AUTH_FLOW] Initial session status: {:?}", session.status());
-            info!("[AUTH_FLOW] Initial session entries: {:?}", session.entries());
+            debug!("[AUTH_FLOW] Initial session status: {:?}", session.status());
+            debug!("[AUTH_FLOW] Initial session entries: {:?}", session.entries());
             
             if let Err(e) = session.insert("authenticated", true) {
                 error!("Failed to set authenticated session: {}", e);
                 return HttpResponse::InternalServerError().json("Session error");
             }
-            info!("[AUTH_FLOW] Session insert authenticated=true: OK");
+            debug!("[AUTH_FLOW] Session insert authenticated=true: OK");
             
             if let Err(e) = session.insert("email", email.clone()) {
                 error!("Failed to set email in session: {}", e);
                 return HttpResponse::InternalServerError().json("Session error");
             }
-            info!("[AUTH_FLOW] Session insert email={}: OK", email);
+            debug!("[AUTH_FLOW] Session insert email={}: OK", email);
             
             // Check session after inserts
-            info!("[AUTH_FLOW] After inserts session status: {:?}", session.status());
-            info!("[AUTH_FLOW] After inserts session entries: {:?}", session.entries());
+            debug!("[AUTH_FLOW] After inserts session status: {:?}", session.status());
+            debug!("[AUTH_FLOW] After inserts session entries: {:?}", session.entries());
             
             // Force session save to ensure data persistence
             session.renew();
-            info!("[AUTH_FLOW] Session renewed to ensure persistence");
-            info!("[AUTH_FLOW] After renew session status: {:?}", session.status());
+            debug!("[AUTH_FLOW] Session renewed to ensure persistence");
+            debug!("[AUTH_FLOW] After renew session status: {:?}", session.status());
             
             // Verify session data was stored
             match session.get::<bool>("authenticated") {
-                Ok(Some(val)) => info!("[AUTH_FLOW] Session verification: authenticated={}", val),
+                Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: authenticated={}", val),
                 Ok(None) => warn!("[AUTH_FLOW] Session verification: authenticated=None (not found)"),
                 Err(e) => warn!("[AUTH_FLOW] Session verification error: {}", e),
             }
             
             // Also verify email
             match session.get::<String>("email") {
-                Ok(Some(val)) => info!("[AUTH_FLOW] Session verification: email={}", val),
+                Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: email={}", val),
                 Ok(None) => warn!("[AUTH_FLOW] Session verification: email=None (not found)"),
                 Err(e) => warn!("[AUTH_FLOW] Session verification error for email: {}", e),
             }
@@ -190,7 +190,7 @@ async fn auth(
             info!("✅ User {} authenticated successfully", email);
             
             // Debug: Show cookies being set
-            info!("[AUTH_DEBUG] About to redirect to /proxy/ - session should be set");
+            debug!("[AUTH_DEBUG] About to redirect to /proxy/ - session should be set");
             
             // Redirect to the protected service after successful auth
             HttpResponse::Found()
@@ -209,22 +209,22 @@ async fn auth(
 #[instrument(name = "auth_check_and_proxy", skip(payload, session), fields(path = %req.path(), method = %req.method()))]
 async fn auth_check_and_proxy(req: HttpRequest, payload: web::Payload, session: Session) -> Result<HttpResponse, Error> {
     // Check if user is authenticated
-    info!("[PROXY_AUTH - EVENT] Checking session for proxy request to: {}", req.path());
+    debug!("[PROXY_AUTH - EVENT] Checking session for proxy request to: {}", req.path());
     
     match session.get::<bool>("authenticated") {
-        Ok(Some(val)) => info!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(Some({}))", val),
-        Ok(None) => info!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(None)"),
-        Err(e) => info!("[PROXY_AUTH - EVENT] Session authenticated error: {}", e),
+        Ok(Some(val)) => debug!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(Some({}))", val),
+        Ok(None) => debug!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(None)"),
+        Err(e) => debug!("[PROXY_AUTH - EVENT] Session authenticated error: {}", e),
     }
     
     match session.get::<String>("email") {
-        Ok(Some(val)) => info!("[PROXY_AUTH - EVENT] Session email result: Ok(Some({}))", val),
-        Ok(None) => info!("[PROXY_AUTH - EVENT] Session email result: Ok(None)"),
-        Err(e) => info!("[PROXY_AUTH - EVENT] Session email error: {}", e),
+        Ok(Some(val)) => debug!("[PROXY_AUTH - EVENT] Session email result: Ok(Some({}))", val),
+        Ok(None) => debug!("[PROXY_AUTH - EVENT] Session email result: Ok(None)"),
+        Err(e) => debug!("[PROXY_AUTH - EVENT] Session email error: {}", e),
     }
     
     let is_authenticated = session.get::<bool>("authenticated").unwrap_or(None).unwrap_or(false);
-    info!("[PROXY_AUTH - EVENT] Final authenticated value: {}", is_authenticated);
+    debug!("[PROXY_AUTH - EVENT] Final authenticated value: {}", is_authenticated);
     
     if is_authenticated {
         // User is authenticated, proxy the request and inject identity headers
