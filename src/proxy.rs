@@ -34,8 +34,14 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     debug!(target_url = %target_url, forwarded_url = %forwarded_url, "Proxying request");
     
     // Create a client to forward the request with generous timeout for large uploads
+    let connector = awc::Connector::new()
+        .timeout(Duration::from_secs(10))
+        .conn_keep_alive(Duration::from_secs(15))
+        .disconnect_timeout(Duration::from_secs(2));
+
     let client = awc::ClientBuilder::new()
         .timeout(Duration::from_secs(600))
+        .connector(connector)
         .finish();
     
     // Build the request to pass through
@@ -144,9 +150,11 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     }
     // Feature flag: stream upstream responses to client without buffering.
     // Enables long-lived endpoints (heartbeat, progress, large downloads) to behave smoothly.
-    let stream_responses = std::env::var("RUNEGATE_STREAM_RESPONSES")
-        .map(|v| matches!(v.as_str(), "true" | "1" | "yes" | "on"))
-        .unwrap_or(false);
+    // Default ON: stream responses unless explicitly disabled
+    let stream_responses = match std::env::var("RUNEGATE_STREAM_RESPONSES") {
+        Ok(v) if matches!(v.as_str(), "false" | "0" | "no" | "off") => false,
+        _ => true,
+    };
 
     if stream_responses {
         let stream = forwarded_res.map_err(|e| {

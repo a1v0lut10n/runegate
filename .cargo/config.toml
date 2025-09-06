@@ -1,0 +1,5 @@
+[build]
+# Enable CPU-specific optimizations for release builds. If you build on CI targeting
+# multiple CPU types, consider removing or overriding this.
+rustflags = ["-C", "target-cpu=native"]
+

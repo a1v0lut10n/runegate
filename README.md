@@ -20,6 +20,8 @@ It authenticates users without passwords by sending them time-limited login link
 - ⚡ Built on `actix-web` for high performance
 - 📊 Structured logging with `tracing` for observability
 - 🛡️ Configurable rate limiting for enhanced security
+- 🪪 Identity to target via headers (optional)
+ - 📡 Streaming upstream responses for progress/large downloads (default ON)
 
 ---
 
@@ -32,10 +34,9 @@ It authenticates users without passwords by sending them time-limited login link
 - Proxy path fix: `/proxy/*` maps to the target root path `/*`
 - Do not forward Runegate’s session cookie to the target service
 - Added debug endpoints for troubleshooting: `/debug/session`, `/debug/cookies`, `/debug/protected`
-
-Debug endpoints can now be toggled via the `RUNEGATE_DEBUG_ENDPOINTS` environment variable.
-
+- Debug endpoints can now be toggled via the `RUNEGATE_DEBUG_ENDPOINTS` environment variable.
 - Identity headers injection (opt-in): When enabled, Runegate injects `X-Runegate-Authenticated`, `X-Runegate-User`, `X-Forwarded-User`, and `X-Forwarded-Email` for authenticated requests and strips any client-supplied versions of these headers.
+- Streaming responses (default ON): Stream upstream responses to clients (improves long‑poll endpoints and very large downloads). Disable with `RUNEGATE_STREAM_RESPONSES=false`.
 
 ---
 
@@ -76,6 +77,7 @@ Additional documentation is available in the `docs/` directory:
 
 - [Architecture Overview](docs/architecture-overview.md) - System design and deployment architecture
 - [Performance Tests](docs/performance-tests.md) - Repeatable iperf3 procedures, firewall rules, and proxy tuning
+- [Identity To Target](docs/identity-to-target.md) - Options to pass user identity to the protected service
 
 ---
 
@@ -166,9 +168,9 @@ Target service reachability: Ensure Runegate can reach your protected app (e.g.,
 
 ## 📡 Streaming Responses (Large Transfers)
 
-Runegate can stream upstream responses to clients without buffering when `RUNEGATE_STREAM_RESPONSES` is enabled. This improves long‑lived endpoints (upload progress, heartbeats) and very large downloads.
+Runegate streams upstream responses to clients without buffering by default. This improves long‑lived endpoints (upload progress, heartbeats) and very large downloads.
 
-- Enable in environment: `RUNEGATE_STREAM_RESPONSES=true`
+- Disable (if needed): set `RUNEGATE_STREAM_RESPONSES=false`
 - nginx recommendations for large transfers:
   - `client_max_body_size 10G;`
   - `proxy_request_buffering off;` (stream upload bodies to Runegate)
@@ -748,13 +750,16 @@ By following these best practices, you can significantly improve the security po
 - [x] JWT-based session management  
 - [x] Static login page UI  
 - [x] Rate limiting and logging  
+- [x] Middleware for route protection  
+- [x] Identity to target via headers  
+- [x] Streaming upstream responses (feature-flag)  
 - [x] Production deployment guides  
+- [x] Performance testing guide (docs/performance-tests.md)  
 
 ---
 
 ### 🛠️ In Progress
 
-- [ ] Middleware implementation for route protection  
 - [ ] Extended error handling and logging  
 
 ---
@@ -795,6 +800,7 @@ By following these best practices, you can significantly improve the security po
 - [ ] Live reload on config change (optional)
 
 #### 🧰 Developer & Extensibility Features
+- [ ] Downstream identity via short‑lived JWT (headers alternative)  
 
 - [ ] Hook system for custom auth validation and logging  
 - [ ] Logging sink options (stdout, file, syslog, remote endpoint)  
@@ -891,86 +897,4 @@ Note on path-based setups:
 
 ## 🪪 Identity To Target
 
-When Runegate authenticates a user, you may want the downstream target service to know who the user is (e.g., to restore per-user state). There are two approaches:
-
-- Headers mode (implemented): inject identity headers into proxied requests
-- JWT mode (future): inject a short‑lived signed token the target can verify
-
-### Headers Mode (Implemented)
-
-- Enable with `RUNEGATE_IDENTITY_HEADERS=true` (default true).
-- For authenticated requests, Runegate injects these headers and strips any client‑supplied versions:
-  - `X-Runegate-Authenticated: true|false`
-  - `X-Runegate-User: <email>`
-  - `X-Forwarded-User: <email>`
-  - `X-Forwarded-Email: <email>`
-- Target guidance: read `X-Forwarded-User` or `X-Forwarded-Email` to associate a request with a user.
-- Security notes:
-  - Keep the target internal (e.g., `127.0.0.1:7860`) so only Runegate can reach it.
-  - Do not trust identity headers from the public internet; Runegate strips/re‑injects them.
-
-### JWT Mode (Future Enhancement)
-
-For stronger trust across multiple services, Runegate can inject a short‑lived JWT, signed with a dedicated keypair.
-
-- Request header: `Authorization: Bearer <jwt>` (or a custom header like `X-Runegate-JWT`).
-- Claims (example):
-
-```json
-{
-  "sub": "user@example.com",
-  "email": "user@example.com",
-  "iat": 1710000000,
-  "exp": 1710000600,
-  "iss": "runegate",
-  "aud": "your-target",
-  "sid": "optional-session-id"
-}
-```
-
-- Recommended algorithms: `RS256` or `EdDSA` (Ed25519). Targets only need the public key.
-- Rotation: include a `kid` header; targets can fetch a JWKS or be provisioned with the new public key.
-
-Planned environment variables (subject to change):
-
-```env
-# Select identity mode: headers | jwt | none
-RUNEGATE_IDENTITY_MODE=jwt
-
-# JWT algorithm: RS256 | EdDSA | HS256
-RUNEGATE_DOWNSTREAM_JWT_ALG=RS256
-
-# TTL (seconds) for downstream JWTs
-RUNEGATE_DOWNSTREAM_JWT_TTL=600
-
-# Issuer and audience
-RUNEGATE_DOWNSTREAM_JWT_ISS=runegate
-RUNEGATE_DOWNSTREAM_JWT_AUD=your-target
-
-# Where to place the token
-RUNEGATE_DOWNSTREAM_JWT_HEADER=Authorization
-RUNEGATE_DOWNSTREAM_JWT_BEARER=true   # prefix with "Bearer "
-
-# Keying (choose one set based on the algorithm)
-# RS256 / EdDSA (preferred): Runegate signs with private key; targets verify with public key
-RUNEGATE_DOWNSTREAM_JWT_PRIVATE_KEY_PATH=/etc/runegate/keys/downstream_private.pem
-# Optional inline alternative
-# RUNEGATE_DOWNSTREAM_JWT_PRIVATE_KEY_BASE64=...
-
-# HS256 (shared secret; simpler but less isolated trust)
-# RUNEGATE_DOWNSTREAM_JWT_SECRET=your-very-strong-shared-secret
-
-# Optional JWKS publication (if you want targets to fetch keys)
-# RUNEGATE_DOWNSTREAM_JWKS_ENABLED=false
-# RUNEGATE_DOWNSTREAM_JWKS_PATH=/jwks.json
-```
-
-Target verification sketch:
-
-- Python (PyJWT, RS256): load the public key, call `jwt.decode(token, public_key, algorithms=["RS256"], audience="your-target", issuer="runegate")`.
-- Node (jose, Ed25519): `jwtVerify(token, publicKey, { algorithms: ["EdDSA"], audience: "your-target", issuer: "runegate" })`.
-
-Security notes:
-- Use a separate downstream keypair/secret; do not reuse your magic‑link JWT secret.
-- Keep tokens short‑lived (5–10 minutes) and consider including a `sid` claim for optional state binding.
-- Ensure targets are not publicly reachable; all traffic should flow via Runegate.
+This content has moved to the documentation: see [docs/identity-to-target.md](docs/identity-to-target.md).

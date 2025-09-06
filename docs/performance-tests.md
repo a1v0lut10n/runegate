@@ -172,7 +172,8 @@ Runegate env (`/etc/runegate/runegate.env`):
 ```env
 RUNEGATE_BASE_URL=https://<your-domain>
 RUNEGATE_TARGET_SERVICE=http://10.0.0.2:7860
-RUNEGATE_STREAM_RESPONSES=true
+# Response streaming is enabled by default; to disable set:
+# RUNEGATE_STREAM_RESPONSES=false
 RUNEGATE_SECURE_COOKIE=true
 # RUNEGATE_COOKIE_DOMAIN=   # leave unset for host-only cookies
 ```
@@ -222,4 +223,3 @@ Apply: `sudo sysctl --system`
 - WireGuard queue length: `sudo ip link set dev wg0 txqueuelen 1000`
 - Disk I/O on aibox: `sudo apt-get install -y iotop sysstat && sudo iotop -oPa && iostat -mx 2`
 - VPS RAM stability: Runegate streaming enabled; nginx buffering off; optional swap 2–4 GiB
-
