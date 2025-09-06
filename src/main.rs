@@ -5,6 +5,7 @@ use actix_session::{Session, SessionMiddleware};
 use actix_web::cookie::{Key, SameSite};
 use actix_web::http::header;
 use actix_files::Files;
+use actix_web::middleware::Condition;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::fs;
@@ -662,6 +663,8 @@ async fn main() -> std::io::Result<()> {
 
         {
             let mut app = App::new()
+                // Access logging (gate by env; default off in production)
+                .wrap(Condition::new(request_logs_enabled, TracingLogger::default()))
                 // Ensure SessionMiddleware runs before AuthMiddleware so session is available in auth checks
                 .wrap(AuthMiddleware::new())
                 .wrap(
@@ -688,10 +691,6 @@ async fn main() -> std::io::Result<()> {
                     .service(web::resource("/debug/session").route(web::get().to(debug_session)))
                     .service(web::resource("/debug/cookies").route(web::get().to(debug_cookies)))
                     .service(web::resource("/debug/protected").route(web::get().to(debug_protected)));
-            }
-
-            if request_logs_enabled {
-                app = app.wrap(TracingLogger::default());
             }
 
             app

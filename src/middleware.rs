@@ -4,7 +4,7 @@ use actix_web::body::EitherBody;
 use actix_session::SessionExt;
 use futures::future::{ok, LocalBoxFuture, Ready};
 use std::task::{Context, Poll};
-use tracing::{info, warn, debug, instrument};
+use tracing::{warn, debug, instrument};
 use std::rc::Rc;
 
 pub struct AuthMiddleware;
