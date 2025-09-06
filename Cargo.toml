@@ -1,6 +1,6 @@
 [package]
 name = "runegate"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Hans Van Wesenbeeck <hvw@aivolution.ch>"]
 license = "Apache-2.0"
 edition = "2024"
