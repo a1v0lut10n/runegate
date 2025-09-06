@@ -34,8 +34,14 @@ pub async fn proxy_request(req: HttpRequest, payload: web::Payload, identity_ema
     debug!(target_url = %target_url, forwarded_url = %forwarded_url, "Proxying request");
     
     // Create a client to forward the request with generous timeout for large uploads
+    let connector = awc::Connector::new()
+        .timeout(Duration::from_secs(10))
+        .conn_keep_alive(Duration::from_secs(15))
+        .disconnect_timeout(Duration::from_secs(2));
+
     let client = awc::ClientBuilder::new()
         .timeout(Duration::from_secs(600))
+        .connector(connector)
         .finish();
     
     // Build the request to pass through

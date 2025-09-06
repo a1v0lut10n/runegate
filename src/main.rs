@@ -607,6 +607,14 @@ async fn main() -> std::io::Result<()> {
         info!("🧪 Debug endpoints DISABLED");
     }
 
+    // Determine worker count from environment (default to 2)
+    let workers_env = std::env::var("RUNEGATE_WORKERS").ok();
+    let workers = workers_env
+        .as_deref()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2);
+    info!("🧵 Workers: {}", workers);
+
     HttpServer::new(move || {
         // Determine cookie_secure setting
         let secure_cookie = match std::env::var(RUNEGATE_SECURE_COOKIE_VAR).as_deref() {
@@ -687,7 +695,9 @@ async fn main() -> std::io::Result<()> {
     })
     .bind("0.0.0.0:7870")?
     .client_request_timeout(Duration::from_secs(600))
-    .workers(4)
+    .keep_alive(Duration::from_secs(15))
+    .backlog(2048)
+    .workers(workers)
     .run()
     .await
 }
