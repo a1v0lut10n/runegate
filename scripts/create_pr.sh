@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Script to create a GitHub PR with commit messages
 
+set -euo pipefail
+
 # Print banner
 echo "⭐ Runegate PR Creator ⭐"
-echo "========================"
+echo "========================="
 
 # Check if gh is installed
 if ! command -v gh &> /dev/null; then
@@ -23,9 +25,16 @@ fi
 BASE_BRANCH=${1:-"main"}
 PR_TITLE=${2:-""}
 
-# If no title provided, use the first commit message as title
+# Derive a human-readable feature name from the branch
+# e.g. feature/VTIME-75-upgrade-tusd → "VTIME 75 Upgrade Tusd"
+FEATURE_NAME=$(echo "$CURRENT_BRANCH" \
+    | sed 's|^feature/||' \
+    | sed 's/-/ /g' \
+    | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+
+# If no title provided, use the feature name (not last commit)
 if [ -z "$PR_TITLE" ]; then
-    PR_TITLE=$(git log -1 --pretty=%s)
+    PR_TITLE="$FEATURE_NAME"
 fi
 
 echo "📊 PR Information:"
@@ -33,62 +42,71 @@ echo "  Current branch: $CURRENT_BRANCH"
 echo "  Base branch: $BASE_BRANCH"
 echo "  Title: $PR_TITLE"
 
-# Generate PR body from commit messages
-echo "📝 Generating PR description from commit messages..."
-PR_BODY="## Changes in this PR\n\n"
+# Build PR body into a temp file directly to avoid quoting issues
+TEMP_FILE=$(mktemp)
 
-# Add feature description from branch name (convert - to spaces and capitalize)
-FEATURE_NAME=$(echo $CURRENT_BRANCH | sed 's/feature\///' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++)sub(/./,toupper(substr($i,1,1)),$i)}1')
-PR_BODY+="This PR implements the **$FEATURE_NAME** feature.\n\n"
+cat >> "$TEMP_FILE" <<EOF
+## Changes in this PR
 
-PR_BODY+="## Commit History\n\n"
+This PR implements the **${FEATURE_NAME}** feature.
 
-# Get all commits between base branch and current branch with proper formatting
-PR_BODY+="$(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --pretty=format:"- **%s**\n" | sed 's/^/  /')\n\n"
+## Commit History
 
-# For each commit, add its body with proper formatting if it has a body
-for COMMIT_HASH in $(git log $BASE_BRANCH..$CURRENT_BRANCH --reverse --format="%H"); do
-    # Get commit body (skipping the subject line)
-    COMMIT_BODY=$(git log -1 --format="%b" $COMMIT_HASH | grep -v "^$")
-    
-    # If commit has a body, format it as a nested list with proper indentation
-    if [ ! -z "$COMMIT_BODY" ]; then
-        # Format each line of the body as a nested bullet point
-        FORMATTED_BODY=$(echo "$COMMIT_BODY" | sed 's/^- /  - /' | sed 's/^/  /')
-        PR_BODY+="$FORMATTED_BODY\n\n"
+EOF
+
+# Add each commit as a top-level bullet with its body as a proper sub-list
+for COMMIT_HASH in $(git log "$BASE_BRANCH".."$CURRENT_BRANCH" --reverse --format="%H"); do
+    COMMIT_SUBJECT=$(git log -1 --format="%s" "$COMMIT_HASH")
+    COMMIT_BODY=$(git log -1 --format="%b" "$COMMIT_HASH" | sed '/^$/d')
+
+    # Top-level bullet: commit subject
+    echo "- **${COMMIT_SUBJECT}**" >> "$TEMP_FILE"
+
+    # Sub-list: commit body lines as nested bullets
+    # GitHub markdown needs a blank line before a nested list to render properly
+    if [ -n "$COMMIT_BODY" ]; then
+        echo "" >> "$TEMP_FILE"
+        echo "$COMMIT_BODY" | while IFS= read -r line; do
+            # If line already starts with "- ", indent it as a sub-bullet
+            if echo "$line" | grep -qE '^\s*-\s'; then
+                echo "  $line" >> "$TEMP_FILE"
+            else
+                echo "  - $line" >> "$TEMP_FILE"
+            fi
+        done
+        echo "" >> "$TEMP_FILE"
     fi
 done
 
-# Add checklist
-PR_BODY+="## Checklist\n\n"
-PR_BODY+="- [ ] Documentation updated\n"
-PR_BODY+="- [ ] Tests added/updated\n"
-PR_BODY+="- [ ] Code reviewed\n\n"
+cat >> "$TEMP_FILE" <<EOF
 
-# Create temp file for PR body
-TEMP_FILE=$(mktemp)
-echo -e $PR_BODY > $TEMP_FILE
+## Checklist
+
+- [ ] Documentation updated
+- [ ] Tests added/updated
+- [ ] Code reviewed
+EOF
 
 # Show preview
 echo "=================="
 echo "📄 PR Description:"
 echo "=================="
-cat $TEMP_FILE
+cat "$TEMP_FILE"
 echo "=================="
 
 # Confirm with user
 read -p "🔍 Proceed with creating the PR? (y/n): " CONFIRM
 if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
     echo "❌ PR creation aborted"
-    rm $TEMP_FILE
+    rm "$TEMP_FILE"
     exit 1
 fi
 
 # Create the PR
 echo "🚀 Creating PR..."
-gh pr create --base $BASE_BRANCH --title "$PR_TITLE" --body-file $TEMP_FILE
+gh pr create --base "$BASE_BRANCH" --title "$PR_TITLE" --body-file "$TEMP_FILE"
 
 # Clean up
-rm $TEMP_FILE
+rm "$TEMP_FILE"
 
 echo "✅ PR creation completed!"
