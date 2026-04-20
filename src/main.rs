@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, instrument, warn};
 
-use rand::Rng;
+use rand::RngExt;
 use runegate::auth::{generate_magic_link, get_magic_link_expiry, verify_token};
 use runegate::email::EmailConfig;
 use runegate::logging;
