@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let login_url = "https://example.com/magic-link";
 
     // Send the email
-    send_magic_link(&email_config, recipient_email, login_url)?;
+    send_magic_link(&email_config, recipient_email, login_url, 15)?;
 
     Ok(())
 }

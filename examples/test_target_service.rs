@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use actix_web::{web, App, HttpServer, Responder, HttpResponse};
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 
 async fn index() -> impl Responder {
     HttpResponse::Ok().body(r#"
@@ -54,7 +54,7 @@ async fn api_data() -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     println!("🚀 Starting test target service on http://127.0.0.1:7860");
-    
+
     HttpServer::new(|| {
         App::new()
             .service(web::resource("/").route(web::get().to(index)))

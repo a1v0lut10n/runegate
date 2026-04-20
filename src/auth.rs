@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation, errors::Error as JwtError, errors::ErrorKind};
-use serde::{Serialize, Deserialize};
+use jsonwebtoken::{
+    DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::Error as JwtError,
+    errors::ErrorKind,
+};
+use rand::RngExt;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{instrument, warn, error, info};
-use rand::Rng;
+use tracing::{error, info, instrument, warn};
 
 // Environment variable names
 pub const JWT_SECRET_ENV: &str = "RUNEGATE_JWT_SECRET";
@@ -31,12 +34,11 @@ impl std::fmt::Display for AuthError {
 
 impl std::error::Error for AuthError {}
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,   // The subject (usually email)
-    pub exp: usize,    // Expiration time
-    pub iat: usize,    // Issued at time
+    pub sub: String, // The subject (usually email)
+    pub exp: usize,  // Expiration time
+    pub iat: usize,  // Issued at time
 }
 
 /// Creates a JWT token for a user
@@ -46,51 +48,62 @@ pub fn create_token(email: &str, expiry_minutes: u64) -> Result<String, AuthErro
         .duration_since(UNIX_EPOCH)
         .map_err(|e| AuthError::TimeError(format!("Failed to get current time: {}", e)))?
         .as_secs() as usize;
-    
+
     // Token expires after the specified minutes
     let expiration = now + (60 * expiry_minutes as usize);
-    
-    let claims = Claims { 
-        sub: email.to_owned(), 
+
+    let claims = Claims {
+        sub: email.to_owned(),
         exp: expiration,
         iat: now,
     };
-    
+
     let secret = get_jwt_secret();
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(&secret))
-        .map_err(|e| AuthError::TokenCreationError(e.to_string()))
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(&secret),
+    )
+    .map_err(|e| AuthError::TokenCreationError(e.to_string()))
 }
 
 /// Verifies a JWT token and returns the user's email if valid
 #[instrument(skip(token), fields(token_truncated = %format!("{}..", &token.chars().take(10).collect::<String>())))]
 pub fn verify_token(token: &str) -> Result<String, JwtError> {
     let secret = get_jwt_secret();
-    info!("[JWT_DEBUG] verify_token called with secret length: {} bytes", secret.len());
+    info!(
+        "[JWT_DEBUG] verify_token called with secret length: {} bytes",
+        secret.len()
+    );
     info!("[JWT_DEBUG] Token length: {} chars", token.len());
-    
+
     // Create validation with debug info
     let validation = Validation::default();
-    info!("[JWT_DEBUG] Using validation settings: algorithms={:?}, validate_exp={}, validate_nbf={}", 
-          validation.algorithms, validation.validate_exp, validation.validate_nbf);
-    
-    match decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(&secret),
-        &validation,
-    ) {
+    info!(
+        "[JWT_DEBUG] Using validation settings: algorithms={:?}, validate_exp={}, validate_nbf={}",
+        validation.algorithms, validation.validate_exp, validation.validate_nbf
+    );
+
+    match decode::<Claims>(token, &DecodingKey::from_secret(&secret), &validation) {
         Ok(token_data) => {
             info!("[JWT_DEBUG] Token decoded successfully");
-            info!("[JWT_DEBUG] Claims - sub: {}, exp: {}, iat: {}", 
-                  token_data.claims.sub, token_data.claims.exp, token_data.claims.iat);
-            
+            info!(
+                "[JWT_DEBUG] Claims - sub: {}, exp: {}, iat: {}",
+                token_data.claims.sub, token_data.claims.exp, token_data.claims.iat
+            );
+
             // Check if token is expired manually for debugging
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as usize;
-            info!("[JWT_DEBUG] Current timestamp: {}, token exp: {}, diff: {} seconds", 
-                  now, token_data.claims.exp, token_data.claims.exp as i64 - now as i64);
-            
+            info!(
+                "[JWT_DEBUG] Current timestamp: {}, token exp: {}, diff: {} seconds",
+                now,
+                token_data.claims.exp,
+                token_data.claims.exp as i64 - now as i64
+            );
+
             Ok(token_data.claims.sub)
         }
         Err(e) => {
@@ -108,7 +121,11 @@ pub fn verify_token(token: &str) -> Result<String, JwtError> {
 
 /// Generates a magic link URL for authentication
 #[instrument(fields(email = %email, base_url = %base_url, expiry_minutes = %expiry_minutes))]
-pub fn generate_magic_link(email: &str, base_url: &str, expiry_minutes: u64) -> Result<String, AuthError> {
+pub fn generate_magic_link(
+    email: &str,
+    base_url: &str,
+    expiry_minutes: u64,
+) -> Result<String, AuthError> {
     let token = create_token(email, expiry_minutes)?;
     Ok(format!("{}/auth?token={}", base_url, token))
 }

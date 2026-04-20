@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
-use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse, Responder, Error};
-use tracing::{info, warn, error, debug, instrument};
+use actix_files::Files;
 use actix_session::{Session, SessionMiddleware};
 use actix_web::cookie::{Key, SameSite};
 use actix_web::http::header;
-use actix_files::Files;
 use actix_web::middleware::Condition;
+use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, Responder, web};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use std::fs;
 use std::sync::Arc;
+use std::time::Duration;
+use tracing::{debug, error, info, instrument, warn};
 
+use rand::RngExt;
+use runegate::auth::{generate_magic_link, get_magic_link_expiry, verify_token};
 use runegate::email::EmailConfig;
-use runegate::send_magic_link::send_magic_link;
-use runegate::memory_session_store::MemorySessionStore;
-use runegate::auth::{generate_magic_link, verify_token, get_magic_link_expiry};
-use runegate::proxy::proxy_request;
 use runegate::logging;
+use runegate::memory_session_store::MemorySessionStore;
 use runegate::middleware::AuthMiddleware;
+use runegate::proxy::proxy_request;
 use runegate::rate_limit::RateLimiters;
-use tracing_actix_web::TracingLogger;
-use rand::Rng; // Added for random key generation
+use runegate::send_magic_link::send_magic_link;
+use tracing_actix_web::TracingLogger; // Added for random key generation
 
 // Application configuration constants
 const SESSION_KEY_ENV: &str = "RUNEGATE_SESSION_KEY";
@@ -58,20 +58,21 @@ async fn health_check() -> impl Responder {
 /// Login endpoint that sends a magic link via email
 #[instrument(name = "login", skip(app_config, rate_limiters), fields(email = %login_data.email))]
 async fn login(
-    login_data: web::Json<LoginRequest>, 
+    login_data: web::Json<LoginRequest>,
     app_config: web::Data<AppConfig>,
     rate_limiters: web::Data<Arc<RateLimiters>>,
-    req: HttpRequest
+    req: HttpRequest,
 ) -> impl Responder {
     let email = &login_data.email;
     let base_url = &app_config.base_url;
-    
+
     // Get the client IP address
-    let client_ip = req.connection_info()
+    let client_ip = req
+        .connection_info()
         .realip_remote_addr()
         .unwrap_or("unknown")
         .to_string();
-    
+
     // Check if IP is rate limited for login attempts
     if !rate_limiters.login_limiter.check_ip(&client_ip) {
         return HttpResponse::TooManyRequests()
@@ -79,16 +80,22 @@ async fn login(
             .append_header(("X-RateLimit-Reset", "60")) // Added header
             .json("Too many login attempts from this IP address. Please try again later.");
     }
-    
+
     // Check if this email is rate-limited (cooldown between magic link requests)
     if let Some(remaining_seconds) = rate_limiters.email_limiter.check_email(email) {
-        warn!("Rate limited attempt to send magic link to {}, cooldown: {} seconds", email, remaining_seconds);
+        warn!(
+            "Rate limited attempt to send magic link to {}, cooldown: {} seconds",
+            email, remaining_seconds
+        );
         return HttpResponse::TooManyRequests()
             .append_header(("X-RateLimit-Exceeded", "Email"))
             .append_header(("X-RateLimit-Reset", remaining_seconds.to_string()))
-            .json(format!("Please wait {} seconds before requesting another magic link", remaining_seconds));
+            .json(format!(
+                "Please wait {} seconds before requesting another magic link",
+                remaining_seconds
+            ));
     }
-    
+
     // Generate a magic link with JWT token using configurable expiry time
     let expiry_minutes = get_magic_link_expiry();
     let login_url = match generate_magic_link(email, base_url, expiry_minutes) {
@@ -96,19 +103,23 @@ async fn login(
         Err(e) => {
             error!("Failed to generate magic link: {}", e);
             // Consider more specific error responses based on AuthError variants if needed
-            return HttpResponse::InternalServerError().json("Failed to generate magic link due to internal error.");
+            return HttpResponse::InternalServerError()
+                .json("Failed to generate magic link due to internal error.");
         }
     };
-    
+
     // Log the expiry time for debugging
-    info!("📧 Magic link generated with {} minutes expiry", expiry_minutes);
-    
+    info!(
+        "📧 Magic link generated with {} minutes expiry",
+        expiry_minutes
+    );
+
     // Send the email
     match send_magic_link(&app_config.email_config, email, &login_url, expiry_minutes) {
         Ok(_) => {
             info!("📧 Magic link sent to {}", email);
             HttpResponse::Ok().json(format!("Magic link sent to {}", email))
-        },
+        }
         Err(e) => {
             warn!("Failed to send magic link: {}", e); // This is for email sending failure
             HttpResponse::InternalServerError().json("Failed to send login email")
@@ -119,16 +130,17 @@ async fn login(
 /// Auth endpoint that verifies a token from the magic link
 #[instrument(name = "auth", skip(session, rate_limiters))]
 async fn auth(
-    req: HttpRequest, 
+    req: HttpRequest,
     session: actix_session::Session,
-    rate_limiters: web::Data<Arc<RateLimiters>>
+    rate_limiters: web::Data<Arc<RateLimiters>>,
 ) -> impl Responder {
     // Get the client IP address for rate limiting
-    let client_ip = req.connection_info()
+    let client_ip = req
+        .connection_info()
         .realip_remote_addr()
         .unwrap_or("unknown")
         .to_string();
-    
+
     // Check if the IP is rate limited for token verification attempts
     if !rate_limiters.token_limiter.check_ip(&client_ip) {
         return HttpResponse::TooManyRequests()
@@ -148,56 +160,70 @@ async fn auth(
         Ok(email) => {
             // If token is valid, mark the session as authenticated
             debug!("[AUTH_FLOW] About to set session data for user: {}", email);
-            
+
             // Check initial session state
             debug!("[AUTH_FLOW] Initial session status: {:?}", session.status());
-            debug!("[AUTH_FLOW] Initial session entries: {:?}", session.entries());
-            
+            debug!(
+                "[AUTH_FLOW] Initial session entries: {:?}",
+                session.entries()
+            );
+
             if let Err(e) = session.insert("authenticated", true) {
                 error!("Failed to set authenticated session: {}", e);
                 return HttpResponse::InternalServerError().json("Session error");
             }
             debug!("[AUTH_FLOW] Session insert authenticated=true: OK");
-            
+
             if let Err(e) = session.insert("email", email.clone()) {
                 error!("Failed to set email in session: {}", e);
                 return HttpResponse::InternalServerError().json("Session error");
             }
             debug!("[AUTH_FLOW] Session insert email={}: OK", email);
-            
+
             // Check session after inserts
-            debug!("[AUTH_FLOW] After inserts session status: {:?}", session.status());
-            debug!("[AUTH_FLOW] After inserts session entries: {:?}", session.entries());
-            
+            debug!(
+                "[AUTH_FLOW] After inserts session status: {:?}",
+                session.status()
+            );
+            debug!(
+                "[AUTH_FLOW] After inserts session entries: {:?}",
+                session.entries()
+            );
+
             // Force session save to ensure data persistence
             session.renew();
             debug!("[AUTH_FLOW] Session renewed to ensure persistence");
-            debug!("[AUTH_FLOW] After renew session status: {:?}", session.status());
-            
+            debug!(
+                "[AUTH_FLOW] After renew session status: {:?}",
+                session.status()
+            );
+
             // Verify session data was stored
             match session.get::<bool>("authenticated") {
                 Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: authenticated={}", val),
-                Ok(None) => warn!("[AUTH_FLOW] Session verification: authenticated=None (not found)"),
+                Ok(None) => {
+                    warn!("[AUTH_FLOW] Session verification: authenticated=None (not found)")
+                }
                 Err(e) => warn!("[AUTH_FLOW] Session verification error: {}", e),
             }
-            
+
             // Also verify email
             match session.get::<String>("email") {
                 Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: email={}", val),
                 Ok(None) => warn!("[AUTH_FLOW] Session verification: email=None (not found)"),
                 Err(e) => warn!("[AUTH_FLOW] Session verification error for email: {}", e),
             }
-            
+
             info!("✅ User {} authenticated successfully", email);
-            
+
             // Debug: Show cookies being set
             debug!("[AUTH_DEBUG] About to redirect to /proxy/ - session should be set");
-            
+
             // Redirect to the protected service after successful auth
             HttpResponse::Found()
                 .append_header((header::LOCATION, "/proxy/"))
                 .finish()
-        },
+        }
         Err(err) => {
             warn!("Token validation error: {}", err);
             HttpResponse::Unauthorized().json("Invalid or expired login link")
@@ -205,28 +231,46 @@ async fn auth(
     }
 }
 
-
 /// Authentication check and proxy handler
 #[instrument(name = "auth_check_and_proxy", skip(payload, session), fields(path = %req.path(), method = %req.method()))]
-async fn auth_check_and_proxy(req: HttpRequest, payload: web::Payload, session: Session) -> Result<HttpResponse, Error> {
+async fn auth_check_and_proxy(
+    req: HttpRequest,
+    payload: web::Payload,
+    session: Session,
+) -> Result<HttpResponse, Error> {
     // Check if user is authenticated
-    debug!("[PROXY_AUTH - EVENT] Checking session for proxy request to: {}", req.path());
-    
+    debug!(
+        "[PROXY_AUTH - EVENT] Checking session for proxy request to: {}",
+        req.path()
+    );
+
     match session.get::<bool>("authenticated") {
-        Ok(Some(val)) => debug!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(Some({}))", val),
+        Ok(Some(val)) => debug!(
+            "[PROXY_AUTH - EVENT] Session authenticated result: Ok(Some({}))",
+            val
+        ),
         Ok(None) => debug!("[PROXY_AUTH - EVENT] Session authenticated result: Ok(None)"),
         Err(e) => debug!("[PROXY_AUTH - EVENT] Session authenticated error: {}", e),
     }
-    
+
     match session.get::<String>("email") {
-        Ok(Some(val)) => debug!("[PROXY_AUTH - EVENT] Session email result: Ok(Some({}))", val),
+        Ok(Some(val)) => debug!(
+            "[PROXY_AUTH - EVENT] Session email result: Ok(Some({}))",
+            val
+        ),
         Ok(None) => debug!("[PROXY_AUTH - EVENT] Session email result: Ok(None)"),
         Err(e) => debug!("[PROXY_AUTH - EVENT] Session email error: {}", e),
     }
-    
-    let is_authenticated = session.get::<bool>("authenticated").unwrap_or(None).unwrap_or(false);
-    debug!("[PROXY_AUTH - EVENT] Final authenticated value: {}", is_authenticated);
-    
+
+    let is_authenticated = session
+        .get::<bool>("authenticated")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    debug!(
+        "[PROXY_AUTH - EVENT] Final authenticated value: {}",
+        is_authenticated
+    );
+
     if is_authenticated {
         // User is authenticated, proxy the request and inject identity headers
         let identity_email = session.get::<String>("email").ok().flatten();
@@ -242,7 +286,8 @@ async fn auth_check_and_proxy(req: HttpRequest, payload: web::Payload, session: 
                 "./login.html".to_string()
             } else {
                 // Extract the base path from the original URI
-                let path_segments: Vec<&str> = original_uri.trim_start_matches('/').split('/').collect();
+                let path_segments: Vec<&str> =
+                    original_uri.trim_start_matches('/').split('/').collect();
                 if path_segments.len() > 1 {
                     format!("/{}/login.html", path_segments[0])
                 } else {
@@ -253,7 +298,7 @@ async fn auth_check_and_proxy(req: HttpRequest, payload: web::Payload, session: 
             // Direct access, use absolute path
             "/login.html".to_string()
         };
-        
+
         debug!("Redirecting unauthenticated user to: {}", redirect_path);
         Ok(HttpResponse::Found()
             .append_header((header::LOCATION, redirect_path))
@@ -267,42 +312,45 @@ fn load_config() -> AppConfig {
     // 1. First try the system-installed location (for deployed environments)
     // 2. Then try the local development path
     let config_paths = [
-        "/etc/runegate/config/email.toml",  // System-installed path
+        "/etc/runegate/config/email.toml", // System-installed path
         "config/email.toml",               // Development path
     ];
-    
+
     // Try each path until one works
     let mut config_text = None;
     let mut last_error = None;
-    
+
     for path in &config_paths {
         match fs::read_to_string(path) {
             Ok(content) => {
                 info!("Loaded email configuration from {}", path);
                 config_text = Some(content);
                 break;
-            },
+            }
             Err(err) => {
                 debug!("Could not load email config from {}: {}", path, err);
                 last_error = Some(err);
             }
         }
     }
-    
+
     // Unwrap the configuration or fail with the last error
     let config_text = config_text.unwrap_or_else(|| {
         error!("Failed to load email configuration from any of the specified paths");
-        panic!("Failed to read email config file: {:?}", last_error.unwrap());
+        panic!(
+            "Failed to read email config file: {:?}",
+            last_error.unwrap()
+        );
     });
-    
+
     // Parse the email configuration
-    let email_config: EmailConfig = toml::from_str(&config_text)
-        .expect("Failed to parse email config");
-    
+    let email_config: EmailConfig =
+        toml::from_str(&config_text).expect("Failed to parse email config");
+
     // Get base URL from environment or use default
-    let base_url = std::env::var("RUNEGATE_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:7870".to_string());
-    
+    let base_url =
+        std::env::var("RUNEGATE_BASE_URL").unwrap_or_else(|_| "http://localhost:7870".to_string());
+
     AppConfig {
         base_url,
         email_config,
@@ -314,8 +362,12 @@ fn get_session_key() -> Key {
     match std::env::var(SESSION_KEY_ENV) {
         Ok(key_str) => {
             let key_str = key_str.trim(); // Remove any whitespace/newlines
-            info!("Session key debug: length={}, is_hex={}", key_str.len(), key_str.chars().all(|c| c.is_ascii_hexdigit()));
-            
+            info!(
+                "Session key debug: length={}, is_hex={}",
+                key_str.len(),
+                key_str.chars().all(|c| c.is_ascii_hexdigit())
+            );
+
             // Try to decode as hex first (128 hex chars = 64 bytes)
             if key_str.len() == 128 && key_str.chars().all(|c| c.is_ascii_hexdigit()) {
                 info!("Attempting hex decode of session key");
@@ -325,7 +377,10 @@ fn get_session_key() -> Key {
                             info!("Successfully decoded hex session key to 64 bytes");
                             return Key::from(&key_bytes);
                         } else {
-                            warn!("Hex decoded session key is {} bytes, not 64", key_bytes.len());
+                            warn!(
+                                "Hex decoded session key is {} bytes, not 64",
+                                key_bytes.len()
+                            );
                         }
                     }
                     Err(e) => {
@@ -335,7 +390,7 @@ fn get_session_key() -> Key {
             } else {
                 info!("Session key not 128 hex chars, using as raw bytes");
             }
-            
+
             // Fall back to treating as raw bytes
             let key_bytes = key_str.as_bytes();
             if key_bytes.len() < 64 {
@@ -348,24 +403,22 @@ fn get_session_key() -> Key {
             info!("Using session key as raw bytes: {} bytes", key_bytes.len());
             Key::from(key_bytes)
         }
-        Err(_) => {
-            match std::env::var(RUNEGATE_ENV).as_deref() {
-                Ok("production") => {
-                    error!("CRITICAL: RUNEGATE_SESSION_KEY is not set in a production environment!");
-                    panic!("RUNEGATE_SESSION_KEY must be set in production.");
-                }
-                _ => {
-                    warn!(
-                        "RUNEGATE_SESSION_KEY is not set. Generating a temporary random key. \
-                        This is NOT suitable for production. Please set RUNEGATE_SESSION_KEY (min 64 bytes)."
-                    );
-                    let mut rng = rand::rng();
-                    let mut key = [0u8; 64];
-                    rng.fill(&mut key);
-                    Key::from(&key)
-                }
+        Err(_) => match std::env::var(RUNEGATE_ENV).as_deref() {
+            Ok("production") => {
+                error!("CRITICAL: RUNEGATE_SESSION_KEY is not set in a production environment!");
+                panic!("RUNEGATE_SESSION_KEY must be set in production.");
             }
-        }
+            _ => {
+                warn!(
+                    "RUNEGATE_SESSION_KEY is not set. Generating a temporary random key. \
+                        This is NOT suitable for production. Please set RUNEGATE_SESSION_KEY (min 64 bytes)."
+                );
+                let mut rng = rand::rng();
+                let mut key = [0u8; 64];
+                rng.fill(&mut key);
+                Key::from(&key)
+            }
+        },
     }
 }
 
@@ -374,72 +427,76 @@ fn log_environment_config() {
     // Environment mode
     let env_mode = std::env::var("RUNEGATE_ENV").unwrap_or_else(|_| "development".to_string());
     info!("🔧 Environment mode: {}", env_mode);
-    
+
     // JWT Secret (length only for security)
     match std::env::var("RUNEGATE_JWT_SECRET") {
         Ok(secret) => info!("🔐 JWT secret: configured ({} bytes)", secret.len()),
         Err(_) => warn!("⚠️  JWT secret: not set, using development default"),
     }
-    
+
     // Session Key (length only for security)
     match std::env::var("RUNEGATE_SESSION_KEY") {
         Ok(key) => info!("🍪 Session key: configured ({} bytes)", key.len()),
         Err(_) => warn!("⚠️  Session key: not set, using development default"),
     }
-    
+
     // Target service
     let target_service = std::env::var("RUNEGATE_TARGET_SERVICE")
         .unwrap_or_else(|_| "http://127.0.0.1:7860".to_string());
     info!("🎯 Target service: {}", target_service);
-    
+
     // Base URL
-    let base_url = std::env::var("RUNEGATE_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:7870".to_string());
+    let base_url =
+        std::env::var("RUNEGATE_BASE_URL").unwrap_or_else(|_| "http://localhost:7870".to_string());
     info!("🌐 Base URL: {}", base_url);
-    
+
     // Magic link expiry
-    let expiry = std::env::var("RUNEGATE_MAGIC_LINK_EXPIRY")
-        .unwrap_or_else(|_| "15".to_string());
+    let expiry = std::env::var("RUNEGATE_MAGIC_LINK_EXPIRY").unwrap_or_else(|_| "15".to_string());
     info!("⏰ Magic link expiry: {} minutes", expiry);
-    
+
     // Secure cookies
-    let secure_cookie = std::env::var("RUNEGATE_SECURE_COOKIE")
-        .unwrap_or_else(|_| "auto".to_string());
+    let secure_cookie =
+        std::env::var("RUNEGATE_SECURE_COOKIE").unwrap_or_else(|_| "auto".to_string());
     info!("🔒 Secure cookies: {}", secure_cookie);
-    
+
     // Cookie domain (optional)
     match std::env::var(RUNEGATE_COOKIE_DOMAIN_VAR) {
         Ok(domain) if !domain.trim().is_empty() => info!("🍪 Cookie domain: {}", domain.trim()),
         _ => info!("🍪 Cookie domain: (unset - host-only)"),
     }
-    
+
     // Rate limiting
-    let rate_limit_enabled = std::env::var("RUNEGATE_RATE_LIMIT_ENABLED")
-        .unwrap_or_else(|_| "true".to_string());
+    let rate_limit_enabled =
+        std::env::var("RUNEGATE_RATE_LIMIT_ENABLED").unwrap_or_else(|_| "true".to_string());
     info!("🛡️  Rate limiting: {}", rate_limit_enabled);
-    
+
     if rate_limit_enabled == "true" {
-        let login_limit = std::env::var("RUNEGATE_LOGIN_RATE_LIMIT")
-            .unwrap_or_else(|_| "5".to_string());
-        let email_cooldown = std::env::var("RUNEGATE_EMAIL_COOLDOWN")
-            .unwrap_or_else(|_| "300".to_string());
-        let token_limit = std::env::var("RUNEGATE_TOKEN_RATE_LIMIT")
-            .unwrap_or_else(|_| "10".to_string());
-        info!("   📊 Login limit: {}/min/IP, Email cooldown: {}s, Token limit: {}/min/IP", 
-              login_limit, email_cooldown, token_limit);
+        let login_limit =
+            std::env::var("RUNEGATE_LOGIN_RATE_LIMIT").unwrap_or_else(|_| "5".to_string());
+        let email_cooldown =
+            std::env::var("RUNEGATE_EMAIL_COOLDOWN").unwrap_or_else(|_| "300".to_string());
+        let token_limit =
+            std::env::var("RUNEGATE_TOKEN_RATE_LIMIT").unwrap_or_else(|_| "10".to_string());
+        info!(
+            "   📊 Login limit: {}/min/IP, Email cooldown: {}s, Token limit: {}/min/IP",
+            login_limit, email_cooldown, token_limit
+        );
     }
-    
+
     // Logging configuration
-    let log_format = std::env::var("RUNEGATE_LOG_FORMAT")
-        .unwrap_or_else(|_| "console".to_string());
+    let log_format = std::env::var("RUNEGATE_LOG_FORMAT").unwrap_or_else(|_| "console".to_string());
     info!("📝 Log format: {}", log_format);
     // Session cookie name
     let cookie_name = std::env::var(RUNEGATE_SESSION_COOKIE_NAME_VAR)
         .unwrap_or_else(|_| "runegate_id".to_string());
     info!("🍪 Session cookie name: {}", cookie_name);
     // Debug endpoints flag
-    let debug_flag = std::env::var(RUNEGATE_DEBUG_ENDPOINTS_VAR).unwrap_or_else(|_| "auto".to_string());
-    info!("🧪 Debug endpoints flag: {} (auto=false in production)", debug_flag);
+    let debug_flag =
+        std::env::var(RUNEGATE_DEBUG_ENDPOINTS_VAR).unwrap_or_else(|_| "auto".to_string());
+    info!(
+        "🧪 Debug endpoints flag: {} (auto=false in production)",
+        debug_flag
+    );
 }
 
 /// Load environment file from multiple possible locations
@@ -448,25 +505,27 @@ fn load_env_file() {
     // 1. First try the system-installed location (for deployed environments)
     // 2. Then try the local development path
     let env_paths = [
-        "/etc/runegate/runegate.env",  // System-installed path
+        "/etc/runegate/runegate.env", // System-installed path
         ".env",                       // Development path
     ];
-    
+
     // Try each path until one works
     for path in &env_paths {
         match dotenvy::from_path(path) {
             Ok(_) => {
                 info!("Loaded environment configuration from {}", path);
                 return;
-            },
+            }
             Err(err) => {
                 debug!("Could not load environment config from {}: {}", path, err);
             }
         }
     }
-    
+
     // If no .env file found, that's okay - environment variables can still be set directly
-    debug!("No .env file found in any of the expected locations, using system environment variables only");
+    debug!(
+        "No .env file found in any of the expected locations, using system environment variables only"
+    );
 }
 
 /// Diagnostic endpoint to return the current rate limiting configuration
@@ -489,7 +548,11 @@ async fn debug_session(req: HttpRequest, session: Session) -> impl Responder {
         .get(header::COOKIE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let client_ip = req.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
+    let client_ip = req
+        .connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
     let pid = std::process::id();
 
     HttpResponse::Ok().json(serde_json::json!({
@@ -525,11 +588,15 @@ async fn debug_cookies(req: HttpRequest) -> impl Responder {
                         "same_site": c.same_site().map(|s| format!("{:?}", s)),
                     })
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         ),
         Err(_e) => None,
     };
-    let client_ip = req.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
+    let client_ip = req
+        .connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
 
     HttpResponse::Ok().json(serde_json::json!({
         "raw_cookie_header": raw_cookie_header,
@@ -541,7 +608,11 @@ async fn debug_cookies(req: HttpRequest) -> impl Responder {
 /// Debug endpoint that goes through auth middleware to verify auth gating
 #[instrument(name = "debug_protected", skip(session))]
 async fn debug_protected(session: Session) -> impl Responder {
-    let authenticated = session.get::<bool>("authenticated").ok().flatten().unwrap_or(false);
+    let authenticated = session
+        .get::<bool>("authenticated")
+        .ok()
+        .flatten()
+        .unwrap_or(false);
     let email = session.get::<String>("email").ok().flatten();
     HttpResponse::Ok().json(serde_json::json!({
         "authenticated": authenticated,
@@ -554,13 +625,12 @@ async fn debug_protected(session: Session) -> impl Responder {
 async fn main() -> std::io::Result<()> {
     // Load .env file from multiple possible locations
     load_env_file();
-    
+
     // Configure logging based on RUNEGATE_LOG_FORMAT environment variable
     // This can be set in .env file or directly in the environment
     // Default is "console", alternatives are "json"
-    let log_format = std::env::var("RUNEGATE_LOG_FORMAT")
-        .unwrap_or_else(|_| "console".to_string());
-    
+    let log_format = std::env::var("RUNEGATE_LOG_FORMAT").unwrap_or_else(|_| "console".to_string());
+
     // Initialize logging based on the format setting
     if log_format == "json" {
         logging::init_tracing("runegate", std::io::stdout);
@@ -571,26 +641,26 @@ async fn main() -> std::io::Result<()> {
         // Now we can log after initialization
         info!("Using console logging for development");
     }
-    
+
     // Initialize rate limiters
     let rate_limiters = Arc::new(RateLimiters::new());
-    
+
     // Log configuration information
     let version = env!("CARGO_PKG_VERSION");
     info!("🚪 Starting Runegate auth proxy v{}", version);
-    
+
     // Log environment configuration (redacting sensitive values)
     log_environment_config();
-    
+
     // Load application configuration
     let config = load_config();
     let app_config = web::Data::new(config);
-    
+
     // Set up the session key for cookies
     let session_key = get_session_key();
     // Create a single shared in-memory session store for all workers
     let shared_session_store = MemorySessionStore::new();
-    
+
     // Create shared data for rate limiters
     let rate_limiters_data = web::Data::new(rate_limiters.clone());
     // Determine session cookie name

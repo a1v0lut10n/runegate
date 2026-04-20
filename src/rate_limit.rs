@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-use std::time::Duration;
-use std::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use lru::LruCache;
+use serde::Serialize;
 use std::num::NonZeroUsize;
 use tracing::{info, warn};
-use serde::Serialize;
 
 /// Environment variable names for rate limiting configuration
 pub const LOGIN_RATE_LIMIT_ENV: &str = "RUNEGATE_LOGIN_RATE_LIMIT";
@@ -82,7 +82,7 @@ impl Timestamp {
     fn now() -> Self {
         Timestamp(std::time::SystemTime::now())
     }
-    
+
     fn elapsed(&self) -> Duration {
         self.0.elapsed().unwrap_or_else(|_| Duration::from_secs(0))
     }
@@ -159,25 +159,25 @@ impl LoginRateLimiter {
             enabled: config.enabled,
         }
     }
-    
+
     /// Check if an IP address is allowed to make a login attempt
     /// Returns true if allowed, false if rate-limited
     pub fn check_ip(&self, ip: &str) -> bool {
         if !self.enabled {
             return true;
         }
-        
+
         let now = Timestamp::now();
         let mut attempts = self.attempts.lock().unwrap();
-        
+
         let entry = attempts.entry(ip.to_string()).or_insert((0, now));
-        
+
         // If the period has elapsed, reset the counter
         if entry.1.elapsed() >= self.period {
             *entry = (1, now); // Reset with this attempt counted
             return true;
         }
-        
+
         // Check if we're under the limit
         if entry.0 < self.max_attempts {
             entry.0 += 1;
@@ -211,25 +211,25 @@ impl TokenRateLimiter {
             enabled: config.enabled,
         }
     }
-    
+
     /// Check if an IP address is allowed to make a token verification attempt
     /// Returns true if allowed, false if rate-limited
     pub fn check_ip(&self, ip: &str) -> bool {
         if !self.enabled {
             return true;
         }
-        
+
         let now = Timestamp::now();
         let mut attempts = self.attempts.lock().unwrap();
-        
+
         let entry = attempts.entry(ip.to_string()).or_insert((0, now));
-        
+
         // If the period has elapsed, reset the counter
         if entry.1.elapsed() >= self.period {
             *entry = (1, now); // Reset with this attempt counted
             return true;
         }
-        
+
         // Check if we're under the limit
         if entry.0 < self.max_attempts {
             entry.0 += 1;
@@ -250,20 +250,35 @@ pub struct RateLimiters {
     pub config: RateLimitConfig,
 }
 
+impl Default for RateLimiters {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RateLimiters {
     pub fn new() -> Self {
         let config = RateLimitConfig::from_env();
-        
+
         info!("Rate limiting configuration:");
         info!("  Enabled: {}", config.enabled);
-        info!("  Login rate limit: {} per minute per IP", config.login_rate_limit);
-        info!("  Email cooldown: {} seconds per email", config.email_cooldown);
-        info!("  Token rate limit: {} per minute per IP", config.token_rate_limit);
-        
+        info!(
+            "  Login rate limit: {} per minute per IP",
+            config.login_rate_limit
+        );
+        info!(
+            "  Email cooldown: {} seconds per email",
+            config.email_cooldown
+        );
+        info!(
+            "  Token rate limit: {} per minute per IP",
+            config.token_rate_limit
+        );
+
         let email_limiter = EmailRateLimiter::new(&config);
         let login_limiter = LoginRateLimiter::new(&config);
         let token_limiter = TokenRateLimiter::new(&config);
-        
+
         Self {
             email_limiter,
             login_limiter,

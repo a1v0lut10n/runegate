@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-use runegate::auth::{create_token, verify_token, get_jwt_secret, get_magic_link_expiry};
+use runegate::auth::{create_token, get_jwt_secret, get_magic_link_expiry, verify_token};
 use std::env;
 
 /// Load environment file from multiple possible locations
@@ -8,23 +8,23 @@ fn load_env_file() {
     // 1. First try the system-installed location (for deployed environments)
     // 2. Then try the local development path
     let env_paths = [
-        "/etc/runegate/runegate.env",  // System-installed path
+        "/etc/runegate/runegate.env", // System-installed path
         ".env",                       // Development path
     ];
-    
+
     // Try each path until one works
     for path in &env_paths {
         match dotenvy::from_path(path) {
             Ok(_) => {
                 println!("DEBUG: Loaded environment configuration from {}", path);
                 return;
-            },
+            }
             Err(_) => {
                 // Silent - we'll try the next path
             }
         }
     }
-    
+
     // If no .env file found, that's okay - environment variables can still be set directly
     println!("DEBUG: No .env file found, using system environment variables only");
 }
@@ -33,10 +33,10 @@ fn load_env_file() {
 fn main() {
     // Load .env file from multiple locations (essential for consistent JWT secrets)
     load_env_file();
-    
+
     // Parse command-line arguments
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         println!("Usage: cargo run --example test_jwt_validation <email> [action]");
         println!("Actions:");
@@ -44,14 +44,14 @@ fn main() {
         println!("  - verify: Verify a token");
         return;
     }
-    
+
     let email = &args[1];
     let action = if args.len() > 2 { &args[2] } else { "create" };
-    
+
     // Print JWT secret info for debugging
     let secret = get_jwt_secret();
     println!("DEBUG: Using JWT secret length: {} bytes", secret.len());
-    
+
     match action.as_ref() {
         "create" => {
             // Create a token with configured expiry
@@ -60,49 +60,52 @@ fn main() {
                 Ok(token) => {
                     println!("✅ JWT Token generated for {}", email);
                     println!("\nToken: {}", token);
-                    
+
                     // Generate auth URL for testing
                     let auth_url = format!("http://localhost:7870/auth?token={}", token);
                     println!("\n🔐 Authentication URL:");
                     println!("{}", auth_url);
-                    
+
                     println!("\n📋 For testing with curl:");
                     println!("curl -v \"{}\"", auth_url);
-                    println!("\n⚠️ Note: This token will expire in {} minutes.", expiry_minutes);
-                    
+                    println!(
+                        "\n⚠️ Note: This token will expire in {} minutes.",
+                        expiry_minutes
+                    );
+
                     // Immediately verify the token for debugging
                     println!("\n🔍 Attempting immediate verification:");
                     match verify_token(&token) {
                         Ok(verified_email) => {
                             println!("  ✅ Token verified! Email: {}", verified_email);
-                        },
+                        }
                         Err(e) => {
                             println!("  ❌ Verification failed: {}", e);
                         }
                     }
-                },
+                }
                 Err(err) => {
                     println!("❌ Error generating token: {}", err);
                 }
             }
-        },
+        }
         "verify" => {
             if args.len() < 3 {
                 println!("Error: Token required for verification");
                 return;
             }
-            
+
             let token = &args[2];
-            
+
             match verify_token(token) {
                 Ok(email) => {
                     println!("✅ Token is valid for user: {}", email);
-                },
+                }
                 Err(e) => {
                     println!("❌ Invalid token: {}", e);
                 }
             }
-        },
+        }
         _ => {
             println!("Unknown action: {}", action);
         }

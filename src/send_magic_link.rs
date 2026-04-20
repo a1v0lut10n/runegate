@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-use lettre::message::{header, Mailbox, Message};
+use crate::email::EmailConfig;
+use lettre::message::{Mailbox, Message, header};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{SmtpTransport, Transport};
-use crate::email::EmailConfig;
 use std::error::Error;
 
 pub fn send_magic_link(
@@ -23,10 +23,7 @@ pub fn send_magic_link(
         .header(header::ContentType::TEXT_PLAIN)
         .body(body)?;
 
-    let creds = Credentials::new(
-        config.smtp_user.clone(),
-        config.smtp_pass.clone(),
-    );
+    let creds = Credentials::new(config.smtp_user.clone(), config.smtp_pass.clone());
 
     // For Gmail on port 587, we need to use STARTTLS
     let mailer = SmtpTransport::starttls_relay(&config.smtp_host)?
