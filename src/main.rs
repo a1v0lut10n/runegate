@@ -184,6 +184,7 @@ fn load_config() -> AppConfig {
     AppConfig {
         base_url,
         email_config,
+        google_oidc: None,
     }
 }
 
@@ -632,6 +633,13 @@ async fn main() -> std::io::Result<()> {
                 // Aliases for backward compatibility
                 .service(web::resource("/login").route(web::post().to(runegate::routes::auth::magic_start)))
                 .service(web::resource("/auth").route(web::get().to(runegate::routes::auth::magic_consume)))
+                // OIDC Endpoints
+                .service(web::resource("/auth/google/start").route(web::get().to(runegate::routes::oidc::google_start)))
+                .service(web::resource("/auth/google/callback").route(web::get().to(runegate::routes::oidc::google_callback)))
+                // MFA Endpoints
+                .service(web::resource("/mfa/totp/verify").route(web::post().to(runegate::routes::mfa::totp_verify)))
+                .service(web::resource("/mfa/webauthn/start").route(web::post().to(runegate::routes::mfa::webauthn_start)))
+                .service(web::resource("/mfa/webauthn/finish").route(web::post().to(runegate::routes::mfa::webauthn_finish)))
                 .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)));
 
             if debug_endpoints_enabled {
