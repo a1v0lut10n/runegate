@@ -7,3 +7,5 @@ pub mod middleware;
 pub mod proxy;
 pub mod rate_limit;
 pub mod send_magic_link;
+pub mod store;
+pub mod ui;

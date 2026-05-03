@@ -29,6 +29,33 @@ const RUNEGATE_SECURE_COOKIE_VAR: &str = "RUNEGATE_SECURE_COOKIE";
 const RUNEGATE_COOKIE_DOMAIN_VAR: &str = "RUNEGATE_COOKIE_DOMAIN";
 const RUNEGATE_SESSION_COOKIE_NAME_VAR: &str = "RUNEGATE_SESSION_COOKIE_NAME";
 const RUNEGATE_DEBUG_ENDPOINTS_VAR: &str = "RUNEGATE_DEBUG_ENDPOINTS";
+const RUNEGATE_MODE_VAR: &str = "RUNEGATE_MODE";
+const RUNEGATE_AUTH_UI_MODE_VAR: &str = "RUNEGATE_AUTH_UI_MODE";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunegateMode {
+    MagicLinkOnly,
+    Gateway,
+}
+
+impl Default for RunegateMode {
+    fn default() -> Self {
+        Self::MagicLinkOnly
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthUiMode {
+    Static,
+    Phenotyper,
+    External,
+}
+
+impl Default for AuthUiMode {
+    fn default() -> Self {
+        Self::Static
+    }
+}
 
 // We'll get the magic link expiry from environment instead of hardcoding it
 // Default is defined in auth.rs as DEFAULT_MAGIC_LINK_EXPIRY
@@ -428,6 +455,14 @@ fn log_environment_config() {
     let env_mode = std::env::var("RUNEGATE_ENV").unwrap_or_else(|_| "development".to_string());
     info!("🔧 Environment mode: {}", env_mode);
 
+    // Runegate mode (magic-link-only or gateway)
+    let runegate_mode = std::env::var(RUNEGATE_MODE_VAR).unwrap_or_else(|_| "magic-link-only".to_string());
+    info!("🔄 Runegate mode: {}", runegate_mode);
+
+    // Auth UI mode (static, phenotyper, external)
+    let ui_mode = std::env::var(RUNEGATE_AUTH_UI_MODE_VAR).unwrap_or_else(|_| "static".to_string());
+    info!("🎨 Auth UI mode: {}", ui_mode);
+
     // JWT Secret (length only for security)
     match std::env::var("RUNEGATE_JWT_SECRET") {
         Ok(secret) => info!("🔐 JWT secret: configured ({} bytes)", secret.len()),
@@ -649,6 +684,40 @@ async fn main() -> std::io::Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     info!("🚪 Starting Runegate auth proxy v{}", version);
 
+    // Parse RUNEGATE_MODE
+    let runegate_mode = match std::env::var(RUNEGATE_MODE_VAR).as_deref() {
+        Ok("gateway") => RunegateMode::Gateway,
+        _ => RunegateMode::MagicLinkOnly,
+    };
+    info!("🚀 Operating in {:?} mode", runegate_mode);
+
+    // Parse RUNEGATE_AUTH_UI_MODE
+    let auth_ui_mode = match std::env::var(RUNEGATE_AUTH_UI_MODE_VAR).as_deref() {
+        Ok("phenotyper") => AuthUiMode::Phenotyper,
+        Ok("external") => AuthUiMode::External,
+        _ => AuthUiMode::Static,
+    };
+    info!("🎨 Auth UI configured for {:?} mode", auth_ui_mode);
+
+    // Initialize Auth UI Renderer
+    let renderer: std::sync::Arc<dyn runegate::ui::AuthUiRenderer> = match auth_ui_mode {
+        AuthUiMode::Phenotyper => {
+            let template_dir = std::env::var("RUNEGATE_TEMPLATE_DIR")
+                .unwrap_or_else(|_| "/opt/runegate/templates".to_string());
+            std::sync::Arc::new(runegate::ui::phenotyper_renderer::PhenotyperRenderer::new(
+                std::path::PathBuf::from(template_dir),
+            ))
+        }
+        AuthUiMode::Static | AuthUiMode::External => {
+            let assets_dir = std::env::var("RUNEGATE_LOGIN_ASSETS_DIR")
+                .unwrap_or_else(|_| "/opt/runegate/static".to_string());
+            std::sync::Arc::new(runegate::ui::static_renderer::StaticRenderer::new(
+                std::path::PathBuf::from(assets_dir),
+            ))
+        }
+    };
+    let renderer_data = web::Data::from(renderer);
+
     // Log environment configuration (redacting sensitive values)
     log_environment_config();
 
@@ -750,6 +819,7 @@ async fn main() -> std::io::Result<()> {
                 // App data
                 .app_data(app_config.clone())
                 .app_data(rate_limiters_data.clone())
+                .app_data(renderer_data.clone())
                 // API Endpoints - define these first to ensure they take priority
                 .service(web::resource("/health").route(web::get().to(health_check)))
                 .service(web::resource("/login").route(web::post().to(login)))
