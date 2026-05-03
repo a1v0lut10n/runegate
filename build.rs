@@ -27,7 +27,9 @@ fn main() {
             }
         }
     } else {
-        println!("cargo:warning=Phenotypes directory 'src/phenotypes' not found. Skipping UI generation.");
+        println!(
+            "cargo:warning=Phenotypes directory 'src/phenotypes' not found. Skipping UI generation."
+        );
     }
 
     println!("cargo:rerun-if-changed=build.rs");

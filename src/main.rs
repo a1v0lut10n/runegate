@@ -32,29 +32,19 @@ const RUNEGATE_DEBUG_ENDPOINTS_VAR: &str = "RUNEGATE_DEBUG_ENDPOINTS";
 const RUNEGATE_MODE_VAR: &str = "RUNEGATE_MODE";
 const RUNEGATE_AUTH_UI_MODE_VAR: &str = "RUNEGATE_AUTH_UI_MODE";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RunegateMode {
+    #[default]
     MagicLinkOnly,
     Gateway,
 }
 
-impl Default for RunegateMode {
-    fn default() -> Self {
-        Self::MagicLinkOnly
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AuthUiMode {
+    #[default]
     Static,
     Phenotyper,
     External,
-}
-
-impl Default for AuthUiMode {
-    fn default() -> Self {
-        Self::Static
-    }
 }
 
 // We'll get the magic link expiry from environment instead of hardcoding it
@@ -456,7 +446,8 @@ fn log_environment_config() {
     info!("🔧 Environment mode: {}", env_mode);
 
     // Runegate mode (magic-link-only or gateway)
-    let runegate_mode = std::env::var(RUNEGATE_MODE_VAR).unwrap_or_else(|_| "magic-link-only".to_string());
+    let runegate_mode =
+        std::env::var(RUNEGATE_MODE_VAR).unwrap_or_else(|_| "magic-link-only".to_string());
     info!("🔄 Runegate mode: {}", runegate_mode);
 
     // Auth UI mode (static, phenotyper, external)

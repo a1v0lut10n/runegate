@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 pub mod memory;
+pub mod redis_store;
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -25,17 +26,12 @@ impl Display for StoreError {
 // These traits will be fleshed out with methods as we migrate each component.
 // For now, they serve as the foundational types for Phase 1.
 
-pub trait SessionStore: Send + Sync {
-}
+pub trait SessionStore: Send + Sync {}
 
-pub trait PreauthStore: Send + Sync {
-}
+pub trait PreauthStore: Send + Sync {}
 
-pub trait LinkStateStore: Send + Sync {
-}
+pub trait LinkStateStore: Send + Sync {}
 
-pub trait RateLimitStore: Send + Sync {
-}
+pub trait RateLimitStore: Send + Sync {}
 
-pub trait ChallengeStore: Send + Sync {
-}
+pub trait ChallengeStore: Send + Sync {}

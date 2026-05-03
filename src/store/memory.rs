@@ -8,25 +8,21 @@ pub struct MemorySessionStore {
 impl SessionStore for MemorySessionStore {}
 
 #[derive(Default)]
-pub struct MemoryPreauthStore {
-}
+pub struct MemoryPreauthStore {}
 
 impl PreauthStore for MemoryPreauthStore {}
 
 #[derive(Default)]
-pub struct MemoryLinkStateStore {
-}
+pub struct MemoryLinkStateStore {}
 
 impl LinkStateStore for MemoryLinkStateStore {}
 
 #[derive(Default)]
-pub struct MemoryRateLimitStore {
-}
+pub struct MemoryRateLimitStore {}
 
 impl RateLimitStore for MemoryRateLimitStore {}
 
 #[derive(Default)]
-pub struct MemoryChallengeStore {
-}
+pub struct MemoryChallengeStore {}
 
 impl ChallengeStore for MemoryChallengeStore {}
