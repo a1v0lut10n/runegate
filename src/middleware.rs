@@ -75,6 +75,7 @@ where
             || path == "/debug/session"
             || path == "/debug/cookies"
             || path.starts_with("/auth")
+            || path.starts_with("/mfa")
             || path.starts_with("/static")
             || path.starts_with("/img")
         {
@@ -114,16 +115,38 @@ where
             .map(|result| result.unwrap_or(false))
             .unwrap_or(false);
 
-        debug!("Final authenticated value: {}", authenticated);
+        let preauth_id_exists = session
+            .get::<String>("preauth_id")
+            .unwrap_or(None)
+            .is_some();
+
+        debug!(
+            "Final authenticated value: {}, preauth_id_exists: {}",
+            authenticated, preauth_id_exists
+        );
 
         if authenticated {
-            debug!("User is authenticated, allowing access to: {}", path);
+            debug!("User is fully authenticated, allowing access to: {}", path);
             let fut = service.call(req);
 
             Box::pin(async move {
                 let res = fut.await?;
                 Ok(res.map_into_left_body())
             })
+        } else if preauth_id_exists {
+            debug!(
+                "User is in PREAUTH state accessing {}, redirecting to /mfa",
+                path
+            );
+            // Return early with a redirect response to MFA
+            let (request, _) = req.into_parts();
+            let response = HttpResponse::Found()
+                .append_header((header::LOCATION, "/mfa"))
+                .finish();
+
+            Box::pin(
+                async move { Ok(ServiceResponse::new(request, response).map_into_right_body()) },
+            )
         } else {
             debug!(
                 "Unauthenticated access attempt to {}, redirecting to login",

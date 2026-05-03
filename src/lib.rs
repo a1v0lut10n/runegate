@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 pub mod auth;
+pub mod config;
 pub mod email;
 pub mod logging;
 pub mod memory_session_store;
 pub mod middleware;
 pub mod proxy;
 pub mod rate_limit;
+pub mod routes;
 pub mod send_magic_link;
 pub mod store;
 pub mod ui;

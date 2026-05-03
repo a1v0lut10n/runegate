@@ -5,21 +5,19 @@ use actix_web::cookie::{Key, SameSite};
 use actix_web::http::header;
 use actix_web::middleware::Condition;
 use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, Responder, web};
-use serde::{Deserialize, Serialize};
+
 use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, instrument, warn};
 
-use rand::RngExt;
-use runegate::auth::{generate_magic_link, get_magic_link_expiry, verify_token};
-use runegate::email::EmailConfig;
 use runegate::logging;
+use rand::RngExt;
+use runegate::email::EmailConfig;
 use runegate::memory_session_store::MemorySessionStore;
 use runegate::middleware::AuthMiddleware;
 use runegate::proxy::proxy_request;
 use runegate::rate_limit::RateLimiters;
-use runegate::send_magic_link::send_magic_link;
 use tracing_actix_web::TracingLogger; // Added for random key generation
 
 // Application configuration constants
@@ -50,16 +48,7 @@ pub enum AuthUiMode {
 // We'll get the magic link expiry from environment instead of hardcoding it
 // Default is defined in auth.rs as DEFAULT_MAGIC_LINK_EXPIRY
 
-#[derive(Debug, Serialize, Deserialize)]
-struct LoginRequest {
-    email: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AppConfig {
-    base_url: String,
-    email_config: EmailConfig,
-}
+use runegate::config::AppConfig;
 
 /// Health check endpoint
 #[instrument(name = "health_check", skip_all)]
@@ -70,182 +59,6 @@ async fn health_check() -> impl Responder {
         "service": "Runegate",
         "version": version
     }))
-}
-
-/// Login endpoint that sends a magic link via email
-#[instrument(name = "login", skip(app_config, rate_limiters), fields(email = %login_data.email))]
-async fn login(
-    login_data: web::Json<LoginRequest>,
-    app_config: web::Data<AppConfig>,
-    rate_limiters: web::Data<Arc<RateLimiters>>,
-    req: HttpRequest,
-) -> impl Responder {
-    let email = &login_data.email;
-    let base_url = &app_config.base_url;
-
-    // Get the client IP address
-    let client_ip = req
-        .connection_info()
-        .realip_remote_addr()
-        .unwrap_or("unknown")
-        .to_string();
-
-    // Check if IP is rate limited for login attempts
-    if !rate_limiters.login_limiter.check_ip(&client_ip) {
-        return HttpResponse::TooManyRequests()
-            .append_header(("X-RateLimit-Exceeded", "IP"))
-            .append_header(("X-RateLimit-Reset", "60")) // Added header
-            .json("Too many login attempts from this IP address. Please try again later.");
-    }
-
-    // Check if this email is rate-limited (cooldown between magic link requests)
-    if let Some(remaining_seconds) = rate_limiters.email_limiter.check_email(email) {
-        warn!(
-            "Rate limited attempt to send magic link to {}, cooldown: {} seconds",
-            email, remaining_seconds
-        );
-        return HttpResponse::TooManyRequests()
-            .append_header(("X-RateLimit-Exceeded", "Email"))
-            .append_header(("X-RateLimit-Reset", remaining_seconds.to_string()))
-            .json(format!(
-                "Please wait {} seconds before requesting another magic link",
-                remaining_seconds
-            ));
-    }
-
-    // Generate a magic link with JWT token using configurable expiry time
-    let expiry_minutes = get_magic_link_expiry();
-    let login_url = match generate_magic_link(email, base_url, expiry_minutes) {
-        Ok(url) => url,
-        Err(e) => {
-            error!("Failed to generate magic link: {}", e);
-            // Consider more specific error responses based on AuthError variants if needed
-            return HttpResponse::InternalServerError()
-                .json("Failed to generate magic link due to internal error.");
-        }
-    };
-
-    // Log the expiry time for debugging
-    info!(
-        "📧 Magic link generated with {} minutes expiry",
-        expiry_minutes
-    );
-
-    // Send the email
-    match send_magic_link(&app_config.email_config, email, &login_url, expiry_minutes) {
-        Ok(_) => {
-            info!("📧 Magic link sent to {}", email);
-            HttpResponse::Ok().json(format!("Magic link sent to {}", email))
-        }
-        Err(e) => {
-            warn!("Failed to send magic link: {}", e); // This is for email sending failure
-            HttpResponse::InternalServerError().json("Failed to send login email")
-        }
-    }
-}
-
-/// Auth endpoint that verifies a token from the magic link
-#[instrument(name = "auth", skip(session, rate_limiters))]
-async fn auth(
-    req: HttpRequest,
-    session: actix_session::Session,
-    rate_limiters: web::Data<Arc<RateLimiters>>,
-) -> impl Responder {
-    // Get the client IP address for rate limiting
-    let client_ip = req
-        .connection_info()
-        .realip_remote_addr()
-        .unwrap_or("unknown")
-        .to_string();
-
-    // Check if the IP is rate limited for token verification attempts
-    if !rate_limiters.token_limiter.check_ip(&client_ip) {
-        return HttpResponse::TooManyRequests()
-            .append_header(("X-RateLimit-Exceeded", "IP"))
-            .append_header(("X-RateLimit-Reset", "60")) // Added header
-            .json("Too many token verification attempts from this IP. Please try again later.");
-    }
-
-    // Check for the token query parameter
-    let token = match req.query_string().strip_prefix("token=") {
-        Some(token) => token,
-        None => return HttpResponse::BadRequest().json("No token provided"),
-    };
-
-    // Verify the token and extract user info
-    match verify_token(token) {
-        Ok(email) => {
-            // If token is valid, mark the session as authenticated
-            debug!("[AUTH_FLOW] About to set session data for user: {}", email);
-
-            // Check initial session state
-            debug!("[AUTH_FLOW] Initial session status: {:?}", session.status());
-            debug!(
-                "[AUTH_FLOW] Initial session entries: {:?}",
-                session.entries()
-            );
-
-            if let Err(e) = session.insert("authenticated", true) {
-                error!("Failed to set authenticated session: {}", e);
-                return HttpResponse::InternalServerError().json("Session error");
-            }
-            debug!("[AUTH_FLOW] Session insert authenticated=true: OK");
-
-            if let Err(e) = session.insert("email", email.clone()) {
-                error!("Failed to set email in session: {}", e);
-                return HttpResponse::InternalServerError().json("Session error");
-            }
-            debug!("[AUTH_FLOW] Session insert email={}: OK", email);
-
-            // Check session after inserts
-            debug!(
-                "[AUTH_FLOW] After inserts session status: {:?}",
-                session.status()
-            );
-            debug!(
-                "[AUTH_FLOW] After inserts session entries: {:?}",
-                session.entries()
-            );
-
-            // Force session save to ensure data persistence
-            session.renew();
-            debug!("[AUTH_FLOW] Session renewed to ensure persistence");
-            debug!(
-                "[AUTH_FLOW] After renew session status: {:?}",
-                session.status()
-            );
-
-            // Verify session data was stored
-            match session.get::<bool>("authenticated") {
-                Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: authenticated={}", val),
-                Ok(None) => {
-                    warn!("[AUTH_FLOW] Session verification: authenticated=None (not found)")
-                }
-                Err(e) => warn!("[AUTH_FLOW] Session verification error: {}", e),
-            }
-
-            // Also verify email
-            match session.get::<String>("email") {
-                Ok(Some(val)) => debug!("[AUTH_FLOW] Session verification: email={}", val),
-                Ok(None) => warn!("[AUTH_FLOW] Session verification: email=None (not found)"),
-                Err(e) => warn!("[AUTH_FLOW] Session verification error for email: {}", e),
-            }
-
-            info!("✅ User {} authenticated successfully", email);
-
-            // Debug: Show cookies being set
-            debug!("[AUTH_DEBUG] About to redirect to /proxy/ - session should be set");
-
-            // Redirect to the protected service after successful auth
-            HttpResponse::Found()
-                .append_header((header::LOCATION, "/proxy/"))
-                .finish()
-        }
-        Err(err) => {
-            warn!("Token validation error: {}", err);
-            HttpResponse::Unauthorized().json("Invalid or expired login link")
-        }
-    }
 }
 
 /// Authentication check and proxy handler
@@ -813,8 +626,12 @@ async fn main() -> std::io::Result<()> {
                 .app_data(renderer_data.clone())
                 // API Endpoints - define these first to ensure they take priority
                 .service(web::resource("/health").route(web::get().to(health_check)))
-                .service(web::resource("/login").route(web::post().to(login)))
-                .service(web::resource("/auth").route(web::get().to(auth)))
+                .service(web::resource("/auth/identify").route(web::post().to(runegate::routes::auth::identify)))
+                .service(web::resource("/auth/magic/start").route(web::post().to(runegate::routes::auth::magic_start)))
+                .service(web::resource("/auth/magic/consume").route(web::get().to(runegate::routes::auth::magic_consume)))
+                // Aliases for backward compatibility
+                .service(web::resource("/login").route(web::post().to(runegate::routes::auth::magic_start)))
+                .service(web::resource("/auth").route(web::get().to(runegate::routes::auth::magic_consume)))
                 .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)));
 
             if debug_endpoints_enabled {
