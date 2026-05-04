@@ -76,6 +76,7 @@ where
             || path == "/debug/cookies"
             || path.starts_with("/auth")
             || path.starts_with("/mfa")
+            || path.starts_with("/keys")
             || path.starts_with("/static")
             || path.starts_with("/img")
         {

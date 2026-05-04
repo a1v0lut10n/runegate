@@ -181,10 +181,15 @@ fn load_config() -> AppConfig {
     let base_url =
         std::env::var("RUNEGATE_BASE_URL").unwrap_or_else(|_| "http://localhost:7870".to_string());
 
+    let upload_private_key = std::env::var("RUNEGATE_UPLOAD_PRIVATE_KEY").ok();
+    let upload_jwks = std::env::var("RUNEGATE_UPLOAD_JWKS").ok();
+
     AppConfig {
         base_url,
         email_config,
-        google_oidc: None,
+        google_oidc: None, // Load from env or file later if needed
+        upload_private_key,
+        upload_jwks,
     }
 }
 
@@ -640,6 +645,9 @@ async fn main() -> std::io::Result<()> {
                 .service(web::resource("/mfa/totp/verify").route(web::post().to(runegate::routes::mfa::totp_verify)))
                 .service(web::resource("/mfa/webauthn/start").route(web::post().to(runegate::routes::mfa::webauthn_start)))
                 .service(web::resource("/mfa/webauthn/finish").route(web::post().to(runegate::routes::mfa::webauthn_finish)))
+                // Upload Endpoints
+                .service(web::resource("/upload-ticket").route(web::post().to(runegate::routes::upload::create_upload_ticket)))
+                .service(web::resource("/keys/upload_jwks.json").route(web::get().to(runegate::routes::upload::get_upload_jwks)))
                 .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)));
 
             if debug_endpoints_enabled {

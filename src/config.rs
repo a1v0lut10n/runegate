@@ -13,4 +13,6 @@ pub struct AppConfig {
     pub base_url: String,
     pub email_config: EmailConfig,
     pub google_oidc: Option<OidcConfig>,
+    pub upload_private_key: Option<String>,
+    pub upload_jwks: Option<String>,
 }
