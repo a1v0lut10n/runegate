@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 pub mod memory;
 pub mod redis_store;
+pub mod pg;
 
 #[derive(Debug)]
 pub enum StoreError {

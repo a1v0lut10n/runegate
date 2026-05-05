@@ -54,11 +54,12 @@ pub struct AuthCallback {
     pub state: String,
 }
 
-#[instrument(name = "google_callback", skip(session, app_config))]
+#[instrument(name = "google_callback", skip(session, app_config, pg_store))]
 pub async fn google_callback(
     query: web::Query<AuthCallback>,
     session: Session,
     app_config: web::Data<AppConfig>,
+    pg_store: Option<web::Data<crate::store::pg::PgStore>>,
 ) -> impl Responder {
     let oidc_config = match app_config.google_oidc.as_ref() {
         Some(config) => config,
@@ -129,6 +130,20 @@ pub async fn google_callback(
         Some(e) => e.to_string(),
         None => return HttpResponse::BadRequest().json("No email provided by Google"),
     };
+
+    if let Some(store) = &pg_store {
+        if std::env::var("RUNEGATE_SIGNUP_POLICY").as_deref() == Ok("invite_only") {
+            let user = store.get_user_by_email(&email).await.unwrap_or(None);
+            if user.is_none() {
+                return HttpResponse::Forbidden().json("Sign up is currently invite-only. Please use an invite code on the main login page.");
+            }
+        } else {
+            // Open signup: create user if they don't exist
+            if store.get_user_by_email(&email).await.unwrap_or(None).is_none() {
+                let _ = store.create_user(&email).await;
+            }
+        }
+    }
 
     // Initialize PREAUTH session
     let jti = uuid::Uuid::new_v4().to_string();

@@ -12,6 +12,7 @@ use tracing::{debug, error, info, instrument, warn};
 #[derive(Debug, Deserialize)]
 pub struct IdentifyRequest {
     pub email: String,
+    pub invite_code: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -19,13 +20,53 @@ pub struct MagicStartRequest {
     pub email: String,
 }
 
-#[instrument(name = "identify", skip(_rate_limiters))]
+#[instrument(name = "identify", skip(_rate_limiters, pg_store))]
 pub async fn identify(
-    _identify_data: web::Json<IdentifyRequest>,
+    identify_data: web::Json<IdentifyRequest>,
     _app_config: web::Data<AppConfig>,
     _rate_limiters: web::Data<Arc<RateLimiters>>,
+    pg_store: Option<web::Data<crate::store::pg::PgStore>>,
     _req: HttpRequest,
 ) -> impl Responder {
+    let email = &identify_data.email;
+    let invite_code = identify_data.invite_code.as_deref();
+
+    if let Some(store) = &pg_store {
+        if std::env::var("RUNEGATE_SIGNUP_POLICY").as_deref() == Ok("invite_only") {
+            let user = store.get_user_by_email(email).await.unwrap_or(None);
+            if user.is_none() {
+                // User does not exist. Check invite code.
+                match invite_code {
+                    Some(code) => {
+                        let invite = store.get_invite_by_code(code).await.unwrap_or(None);
+                        match invite {
+                            Some(inv) => {
+                                match store.create_user(email).await {
+                                    Ok(new_user) => {
+                                        if let Err(e) = store.consume_invite(inv.id, new_user.id).await {
+                                            error!("Failed to consume invite: {}", e);
+                                            return HttpResponse::InternalServerError().json("Failed to process invite");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to create user: {}", e);
+                                        return HttpResponse::InternalServerError().json("Database error");
+                                    }
+                                }
+                            }
+                            None => return HttpResponse::Forbidden().json("Invalid or expired invite code."),
+                        }
+                    }
+                    None => return HttpResponse::Forbidden().json("An invite code is required to sign up."),
+                }
+            }
+        } else {
+            // Open signup: create user if they don't exist
+            if store.get_user_by_email(email).await.unwrap_or(None).is_none() {
+                let _ = store.create_user(email).await;
+            }
+        }
+    }
     // For now, Identify just forwards to magic_start logic, returning success immediately.
     HttpResponse::Ok().json(serde_json::json!({
         "status": "ok",
@@ -34,15 +75,30 @@ pub async fn identify(
     }))
 }
 
-#[instrument(name = "magic_start", skip(rate_limiters))]
+#[instrument(name = "magic_start", skip(rate_limiters, pg_store))]
 pub async fn magic_start(
     req_data: web::Json<MagicStartRequest>,
     app_config: web::Data<AppConfig>,
     rate_limiters: web::Data<Arc<RateLimiters>>,
+    pg_store: Option<web::Data<crate::store::pg::PgStore>>,
     req: HttpRequest,
 ) -> impl Responder {
     let email = &req_data.email;
     let base_url = &app_config.base_url;
+
+    if let Some(store) = &pg_store {
+        if std::env::var("RUNEGATE_SIGNUP_POLICY").as_deref() == Ok("invite_only") {
+            let user = store.get_user_by_email(email).await.unwrap_or(None);
+            if user.is_none() {
+                return HttpResponse::Forbidden().json("Sign up is currently invite-only. Please use an invite code on the main login page.");
+            }
+        } else {
+            // Open signup: create user if they don't exist
+            if store.get_user_by_email(email).await.unwrap_or(None).is_none() {
+                let _ = store.create_user(email).await;
+            }
+        }
+    }
 
     let client_ip = req
         .connection_info()

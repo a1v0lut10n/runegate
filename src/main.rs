@@ -18,6 +18,7 @@ use runegate::memory_session_store::MemorySessionStore;
 use runegate::middleware::AuthMiddleware;
 use runegate::proxy::proxy_request;
 use runegate::rate_limit::RateLimiters;
+use runegate::store::pg::PgStore;
 use tracing_actix_web::TracingLogger; // Added for random key generation
 
 // Application configuration constants
@@ -535,6 +536,12 @@ async fn main() -> std::io::Result<()> {
     let config = load_config();
     let app_config = web::Data::new(config);
 
+    // Initialize PostgreSQL store if configured
+    let pg_store = PgStore::new().await.unwrap_or_else(|e| {
+        error!("Failed to initialize PostgreSQL store: {}", e);
+        None
+    });
+
     // Set up the session key for cookies
     let session_key = get_session_key();
     // Create a single shared in-memory session store for all workers
@@ -573,6 +580,8 @@ async fn main() -> std::io::Result<()> {
     };
 
     HttpServer::new(move || {
+        let pg_store_instance = pg_store.clone();
+        
         // Determine cookie_secure setting
         let secure_cookie = match std::env::var(RUNEGATE_SECURE_COOKIE_VAR).as_deref() {
             Ok("true") => {
@@ -629,7 +638,13 @@ async fn main() -> std::io::Result<()> {
                 // App data
                 .app_data(app_config.clone())
                 .app_data(rate_limiters_data.clone())
-                .app_data(renderer_data.clone())
+                .app_data(renderer_data.clone());
+                
+            if let Some(pg) = &pg_store_instance {
+                app = app.app_data(web::Data::new(pg.clone()));
+            }
+
+            let mut app = app
                 // API Endpoints - define these first to ensure they take priority
                 .service(web::resource("/health").route(web::get().to(health_check)))
                 .service(web::resource("/auth/identify").route(web::post().to(runegate::routes::auth::identify)))
@@ -648,6 +663,9 @@ async fn main() -> std::io::Result<()> {
                 // Upload Endpoints
                 .service(web::resource("/upload-ticket").route(web::post().to(runegate::routes::upload::create_upload_ticket)))
                 .service(web::resource("/keys/upload_jwks.json").route(web::get().to(runegate::routes::upload::get_upload_jwks)))
+                // Admin Endpoints
+                .service(web::resource("/admin/invites").route(web::post().to(runegate::routes::admin::create_invite)).route(web::get().to(runegate::routes::admin::get_invites)))
+                .service(web::resource("/admin/invites/{id}/revoke").route(web::post().to(runegate::routes::admin::revoke_invite)))
                 .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)));
 
             if debug_endpoints_enabled {
