@@ -56,7 +56,8 @@ fn main() {
         "create" => {
             // Create a token with configured expiry
             let expiry_minutes = get_magic_link_expiry();
-            match create_token(email, expiry_minutes) {
+            let jti = uuid::Uuid::new_v4().to_string();
+            match create_token(email, expiry_minutes, &jti) {
                 Ok(token) => {
                     println!("✅ JWT Token generated for {}", email);
                     println!("\nToken: {}", token);
@@ -77,7 +78,7 @@ fn main() {
                     println!("\n🔍 Attempting immediate verification:");
                     match verify_token(&token) {
                         Ok(verified_email) => {
-                            println!("  ✅ Token verified! Email: {}", verified_email);
+                            println!("  ✅ Token verified! Email: {}", verified_email.sub);
                         }
                         Err(e) => {
                             println!("  ❌ Verification failed: {}", e);
@@ -99,7 +100,7 @@ fn main() {
 
             match verify_token(token) {
                 Ok(email) => {
-                    println!("✅ Token is valid for user: {}", email);
+                    println!("✅ Token is valid for user: {}", email.sub);
                 }
                 Err(e) => {
                     println!("❌ Invalid token: {}", e);
