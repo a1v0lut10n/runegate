@@ -76,6 +76,8 @@ runegate/
 Additional documentation is available in the `docs/` directory:
 
 - [Architecture Overview](docs/architecture-overview.md) - System design and deployment architecture
+- [Gateway Mode](docs/howto/gateway-mode.md) - Using Runegate with PostgreSQL, OIDC, and Invite-Only onboarding
+- [Magic-Link-Only Mode](docs/howto/magic-link-only-mode.md) - Using Runegate in a lightweight, stateless configuration
 - [Performance Tests](docs/performance-tests.md) - Repeatable iperf3 procedures, firewall rules, and proxy tuning
 - [Identity To Target](docs/identity-to-target.md) - Options to pass user identity to the protected service
 
@@ -249,6 +251,31 @@ Optional configuration through environment variables or `.env` file:
 # - RUNEGATE_JWT_SECRET and RUNEGATE_SESSION_KEY must be set.
 # - RUNEGATE_SECURE_COOKIE defaults to `true`.
 RUNEGATE_ENV=production
+
+# Defines the operation mode: `gateway` or `magic-link-only` (default)
+# See docs/howto/gateway-mode.md and docs/howto/magic-link-only-mode.md
+RUNEGATE_MODE=gateway
+
+# Authentication UI Renderer: `static` (default), `phenotyper`, or `external`
+RUNEGATE_AUTH_UI_MODE=static
+
+# PostgreSQL Connection String (Required for gateway mode)
+DATABASE_URL=postgres://user:password@localhost/runegate
+
+# Signup Policy: `invite_only` (requires gateway mode) or `open` (default)
+RUNEGATE_SIGNUP_POLICY=invite_only
+
+# Admin API Token (used for generating/revoking invites)
+RUNEGATE_ADMIN_API_TOKEN=your_secure_admin_token
+
+# Google OIDC Configuration (Optional)
+RUNEGATE_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+RUNEGATE_GOOGLE_CLIENT_SECRET=your_google_client_secret
+RUNEGATE_GOOGLE_REDIRECT_URL=https://app.example.com/auth/google/callback
+
+# Edge Authorization Upload Ticket Keys (Optional)
+RUNEGATE_UPLOAD_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
+RUNEGATE_UPLOAD_JWKS='{"keys": [{"kty": "RSA", "kid": "...", ...}]}'
 
 # JWT secret for token signing. Minimum 32 bytes recommended.
 # Must be set if RUNEGATE_ENV=production (app will panic otherwise).
