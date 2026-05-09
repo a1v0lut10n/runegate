@@ -280,6 +280,10 @@ RUNEGATE_AUTH_UI_MODE=static
 # PostgreSQL Connection String (Required for gateway mode)
 DATABASE_URL=postgres://user:password@localhost/runegate
 
+# Redis Connection String (Optional for magic-link-only distributed sessions)
+# Setting this automatically configures actix-session-redis for cluster deployments.
+REDIS_URL=redis://127.0.0.1:6379
+
 # Signup Policy: `invite_only` (requires gateway mode) or `open` (default)
 RUNEGATE_SIGNUP_POLICY=invite_only
 

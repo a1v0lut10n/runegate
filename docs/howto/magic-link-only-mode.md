@@ -3,7 +3,7 @@
 Runegate can be configured to run in **Magic-Link-Only Mode** (`RUNEGATE_MODE=magic-link-only`). This is a lightweight, stateless operational mode that is perfect for simple deployments where a full database is not desired.
 
 ## Features
-- **Stateless Authentication**: Fully relies on in-memory or Redis-backed session stores and JWT verification. 
+- **Stateless Authentication**: Fully relies on in-memory or Redis-backed session stores and JWT verification. For distributed deployments behind a load balancer, setting `REDIS_URL` will automatically configure a robust, shared session store.
 - **Zero Database Requirements**: Does not require a PostgreSQL instance.
 - **Easy Deployment**: Requires very few configuration variables.
 - **Email-Based Magic Links**: Users authenticate via magic links sent directly to their email address. 
@@ -21,6 +21,10 @@ RUNEGATE_JWT_SECRET=your_very_secure_random_string_for_jwt_at_least_32_bytes
 
 # Required: Session key for cookie encryption
 RUNEGATE_SESSION_KEY=your_very_secure_random_string_for_session_cookies_at_least_64_bytes
+
+# Optional: Redis connection string for distributed session management
+# If omitted, Runegate defaults to an in-memory session store.
+# REDIS_URL=redis://127.0.0.1:6379
 
 # Required: Email configuration must be provided in config/email.toml
 ```
