@@ -544,8 +544,26 @@ async fn main() -> std::io::Result<()> {
 
     // Set up the session key for cookies
     let session_key = get_session_key();
-    // Create a single shared in-memory session store for all workers
-    let shared_session_store = MemorySessionStore::new();
+    // Create a shared session store based on configuration
+    let shared_session_store = match std::env::var("REDIS_URL") {
+        Ok(redis_url) => {
+            info!("🔌 Initializing Redis Session Store...");
+            match actix_session::storage::RedisSessionStore::new(redis_url).await {
+                Ok(redis_store) => {
+                    info!("✅ Redis Session Store initialized successfully");
+                    runegate::store::session::RunegateSessionStore::Redis(redis_store)
+                }
+                Err(e) => {
+                    error!("❌ Failed to connect to Redis: {}", e);
+                    panic!("Redis connection failed, but REDIS_URL was provided.");
+                }
+            }
+        }
+        Err(_) => {
+            info!("🧠 Initializing In-Memory Session Store...");
+            runegate::store::session::RunegateSessionStore::Memory(MemorySessionStore::new())
+        }
+    };
 
     // Create shared data for rate limiters
     let rate_limiters_data = web::Data::new(rate_limiters.clone());

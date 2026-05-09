@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 pub mod memory;
-pub mod redis_store;
+pub mod session;
 pub mod pg;
 
 #[derive(Debug)]
