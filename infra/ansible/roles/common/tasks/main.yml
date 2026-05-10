@@ -1,0 +1,33 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name:
+      - curl
+      - ufw
+      - git
+    state: present
+
+- name: Setup UFW firewall
+  ufw:
+    state: enabled
+    policy: deny
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: Allow HTTP
+  ufw:
+    rule: allow
+    name: "Nginx HTTP"
+
+- name: Allow HTTPS
+  ufw:
+    rule: allow
+    name: "Nginx HTTPS"

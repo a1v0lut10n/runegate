@@ -1,0 +1,7 @@
+# To use this: copy to vault.yml and encrypt it using `ansible-vault encrypt vault.yml`
+vault_database_url: "postgres://runegate_user:your_secure_password@10.0.0.5/runegate_db"
+vault_jwt_secret: "your_secure_random_string_32_bytes_min"
+vault_session_key: "your_secure_random_string_64_bytes_min"
+vault_smtp_password: "your_smtp_password"
+vault_google_client_secret: "your_google_oidc_secret"
+vault_admin_api_token: "your_admin_api_token"

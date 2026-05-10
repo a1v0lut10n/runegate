@@ -1,0 +1,17 @@
+[Unit]
+Description=Runegate Identity Proxy
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=runegate
+Group=runegate
+WorkingDirectory=/opt/runegate
+EnvironmentFile=/opt/runegate/.env
+ExecStart=/opt/runegate/bin/runegate
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

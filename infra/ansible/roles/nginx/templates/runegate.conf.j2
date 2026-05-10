@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name {{ server_name | default('_') }};
+
+    client_max_body_size 500M;
+
+    # For now, we are just proxying HTTP. 
+    # For HTTPS in GCP, you should use Certbot to automatically configure TLS here.
+
+    location / {
+        proxy_pass http://127.0.0.1:7870;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_read_timeout 86400;
+    }
+}

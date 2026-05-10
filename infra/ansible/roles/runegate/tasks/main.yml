@@ -1,0 +1,82 @@
+---
+- name: Create runegate group
+  group:
+    name: runegate
+    state: present
+
+- name: Create runegate user
+  user:
+    name: runegate
+    group: runegate
+    system: yes
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Create required directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: runegate
+    group: runegate
+    mode: '0750'
+  loop:
+    - /opt/runegate
+    - /opt/runegate/bin
+    - /opt/runegate/config
+    - /opt/runegate/static
+    - /opt/runegate/templates
+
+- name: Copy static files and templates
+  synchronize:
+    src: "{{ playbook_dir }}/../../{{ item }}"
+    dest: "/opt/runegate/"
+    owner: no
+    group: no
+  loop:
+    - static
+    - config
+    - templates
+
+- name: Fix ownership for synced directories
+  file:
+    path: "/opt/runegate/{{ item }}"
+    owner: runegate
+    group: runegate
+    recurse: yes
+  loop:
+    - static
+    - config
+    - templates
+
+- name: Copy the runegate binary
+  copy:
+    src: "{{ playbook_dir }}/../../target/release/runegate"
+    dest: /opt/runegate/bin/runegate
+    owner: runegate
+    group: runegate
+    mode: '0755'
+  notify: Restart Runegate
+
+- name: Template the .env configuration file
+  template:
+    src: env.j2
+    dest: /opt/runegate/.env
+    owner: runegate
+    group: runegate
+    mode: '0600'
+  notify: Restart Runegate
+
+- name: Create systemd service file
+  template:
+    src: runegate.service.j2
+    dest: /etc/systemd/system/runegate.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload Systemd
+
+- name: Ensure Runegate is enabled and started
+  service:
+    name: runegate
+    state: started
+    enabled: yes
