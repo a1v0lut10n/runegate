@@ -145,11 +145,9 @@ pub async fn google_callback(
         }
     }
 
-    // Initialize PREAUTH session
-    let jti = uuid::Uuid::new_v4().to_string();
-    
-    if let Err(e) = session.insert("preauth_id", jti.clone()) {
-        error!("Failed to set preauth session: {}", e);
+    // Initialize authenticated session directly
+    if let Err(e) = session.insert("authenticated", true) {
+        error!("Failed to set authenticated session: {}", e);
         return HttpResponse::InternalServerError().json("Session error");
     }
     if let Err(e) = session.insert("email", email.clone()) {
@@ -163,9 +161,9 @@ pub async fn google_callback(
 
     session.renew();
 
-    info!("✅ User {} pre-authenticated successfully via Google", email);
+    info!("✅ User {} authenticated successfully via Google", email);
 
     HttpResponse::Found()
-        .append_header((header::LOCATION, "/mfa"))
+        .append_header((header::LOCATION, "/proxy/"))
         .finish()
 }
