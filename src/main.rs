@@ -20,6 +20,10 @@ use runegate::proxy::proxy_request;
 use runegate::rate_limit::RateLimiters;
 use runegate::store::pg::PgStore;
 use tracing_actix_web::TracingLogger; // Added for random key generation
+use runegate::ui::context::{
+    AuthUiContext, RequestContext, MarketContext, LocaleContext,
+    BrandingContext, AuthContext, NavigationContext, SecurityContext, MessageContext
+};
 
 // Application configuration constants
 const SESSION_KEY_ENV: &str = "RUNEGATE_SESSION_KEY";
@@ -50,6 +54,114 @@ pub enum AuthUiMode {
 // Default is defined in auth.rs as DEFAULT_MAGIC_LINK_EXPIRY
 
 use runegate::config::AppConfig;
+
+#[derive(serde::Deserialize)]
+struct AuthQueryParams {
+    return_to: Option<String>,
+    locale: Option<String>,
+}
+
+fn create_auth_ui_context(req: &HttpRequest, query: &AuthQueryParams) -> AuthUiContext {
+    let host = req.connection_info().host().to_string();
+    let path = req.path().to_string();
+    let request_id = uuid::Uuid::new_v4().to_string();
+
+    let return_to = query.return_to.clone().unwrap_or_else(|| "/app".to_string());
+    let locale_str = query.locale.clone().unwrap_or_else(|| "en".to_string());
+
+    AuthUiContext {
+        request: RequestContext {
+            host,
+            path,
+            request_id,
+        },
+        market: MarketContext {
+            id: "global".to_string(),
+            canonical_domain: "verbatime.ai".to_string(),
+            market_name: "Global".to_string(),
+            currency: "EUR".to_string(),
+        },
+        locale: LocaleContext {
+            current: locale_str,
+            available: vec!["en".to_string(), "nl".to_string(), "nl-BE".to_string(), "de".to_string(), "fr".to_string()],
+            default: "en".to_string(),
+        },
+        branding: BrandingContext {
+            product_name: "Verbatime".to_string(),
+            logo_url: "/img/logo.svg".to_string(),
+            primary_color: "#0ea5e9".to_string(),
+            support_email: "support@verbatime.dev".to_string(),
+        },
+        auth: AuthContext {
+            mode: "gateway".to_string(),
+            signup_policy: "open".to_string(),
+            magic_link_enabled: true,
+            google_enabled: true,
+            webauthn_enabled: true,
+            totp_enabled: true,
+        },
+        navigation: NavigationContext {
+            return_to,
+            login_url: "/auth/login".to_string(),
+            register_url: "/auth/register".to_string(),
+        },
+        security: SecurityContext {
+            csrf_token: "".to_string(),
+            csp_nonce: "".to_string(),
+        },
+        messages: MessageContext {
+            title: "".to_string(),
+            subtitle: None,
+            flash: None,
+            error: None,
+        },
+    }
+}
+
+async fn serve_login(
+    req: HttpRequest,
+    query: web::Query<AuthQueryParams>,
+    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+) -> impl Responder {
+    let ctx = create_auth_ui_context(&req, &query);
+    match renderer.render_login(&ctx) {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("Failed to render login UI: {}", e);
+            HttpResponse::InternalServerError().body(format!("Failed to render login UI: {}", e))
+        }
+    }
+}
+
+async fn serve_register(
+    req: HttpRequest,
+    query: web::Query<AuthQueryParams>,
+    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+) -> impl Responder {
+    let ctx = create_auth_ui_context(&req, &query);
+    match renderer.render_register(&ctx) {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("Failed to render register UI: {}", e);
+            HttpResponse::InternalServerError().body(format!("Failed to render register UI: {}", e))
+        }
+    }
+}
+
+async fn serve_mfa_select(
+    req: HttpRequest,
+    query: web::Query<AuthQueryParams>,
+    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+) -> impl Responder {
+    let ctx = create_auth_ui_context(&req, &query);
+    match renderer.render_mfa_select(&ctx) {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("Failed to render MFA select UI: {}", e);
+            HttpResponse::InternalServerError().body(format!("Failed to render MFA select: {}", e))
+        }
+    }
+}
 
 /// Health check endpoint
 #[instrument(name = "health_check", skip_all)]
@@ -684,7 +796,15 @@ async fn main() -> std::io::Result<()> {
                 // Admin Endpoints
                 .service(web::resource("/admin/invites").route(web::post().to(runegate::routes::admin::create_invite)).route(web::get().to(runegate::routes::admin::get_invites)))
                 .service(web::resource("/admin/invites/{id}/revoke").route(web::post().to(runegate::routes::admin::revoke_invite)))
-                .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)));
+                .service(web::resource("/rate_limit_info").route(web::get().to(rate_limit_info)))
+                // UI Endpoints
+                .service(web::resource("/auth/login").route(web::get().to(serve_login)))
+                .service(web::resource("/auth/login.html").route(web::get().to(serve_login)))
+                .service(web::resource("/login.html").route(web::get().to(serve_login)))
+                .service(web::resource("/auth/register").route(web::get().to(serve_register)))
+                .service(web::resource("/auth/register.html").route(web::get().to(serve_register)))
+                .service(web::resource("/register.html").route(web::get().to(serve_register)))
+                .service(web::resource("/mfa").route(web::get().to(serve_mfa_select)));
 
             if debug_endpoints_enabled {
                 app = app
@@ -695,7 +815,7 @@ async fn main() -> std::io::Result<()> {
 
             app
                 // Static files serving - place after API endpoints to avoid routing conflicts
-                .service(Files::new("/login.html", "static").index_file("login.html"))
+                .service(Files::new("/auth", "static"))
                 .service(Files::new("/static", "static"))
                 .service(Files::new("/img", "static/img"))
                 // Protected routes need to be guarded in each handler
