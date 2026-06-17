@@ -139,8 +139,8 @@ pub async fn magic_start(
     };
 
     info!(
-        "📧 Magic link generated with {} minutes expiry",
-        expiry_minutes
+        "📧 Magic link generated with {} minutes expiry. URL: {}",
+        expiry_minutes, login_url
     );
 
     match send_magic_link(&app_config.email_config, email, &login_url, expiry_minutes) {
@@ -149,8 +149,9 @@ pub async fn magic_start(
             HttpResponse::Ok().json(format!("Magic link sent to {}", email))
         }
         Err(e) => {
-            warn!("Failed to send magic link: {}", e);
-            HttpResponse::InternalServerError().json("Failed to send login email")
+            warn!("Failed to send magic link email (falling back to stdout/log display): {}", e);
+            info!("📧 [DEV/FALLBACK] Magic link for {}: {}", email, login_url);
+            HttpResponse::Ok().json(format!("Magic link generated (check server logs/email)"))
         }
     }
 }
