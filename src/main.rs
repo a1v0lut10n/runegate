@@ -121,7 +121,7 @@ fn create_auth_ui_context(req: &HttpRequest, query: &AuthQueryParams) -> AuthUiC
 async fn serve_login(
     req: HttpRequest,
     query: web::Query<AuthQueryParams>,
-    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+    renderer: web::Data<dyn runegate::ui::AuthUiRenderer>,
 ) -> impl Responder {
     let ctx = create_auth_ui_context(&req, &query);
     match renderer.render_login(&ctx) {
@@ -136,7 +136,7 @@ async fn serve_login(
 async fn serve_register(
     req: HttpRequest,
     query: web::Query<AuthQueryParams>,
-    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+    renderer: web::Data<dyn runegate::ui::AuthUiRenderer>,
 ) -> impl Responder {
     let ctx = create_auth_ui_context(&req, &query);
     match renderer.render_register(&ctx) {
@@ -151,7 +151,7 @@ async fn serve_register(
 async fn serve_mfa_select(
     req: HttpRequest,
     query: web::Query<AuthQueryParams>,
-    renderer: web::Data<std::sync::Arc<dyn runegate::ui::AuthUiRenderer>>,
+    renderer: web::Data<dyn runegate::ui::AuthUiRenderer>,
 ) -> impl Responder {
     let ctx = create_auth_ui_context(&req, &query);
     match renderer.render_mfa_select(&ctx) {
