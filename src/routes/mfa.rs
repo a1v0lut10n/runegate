@@ -41,7 +41,7 @@ pub async fn totp_verify(
     info!("✅ User {} completed MFA successfully", email);
 
     HttpResponse::Found()
-        .append_header((header::LOCATION, "/proxy/"))
+        .append_header((header::LOCATION, "/proxy/app"))
         .finish()
 }
 

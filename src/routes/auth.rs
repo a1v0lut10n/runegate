@@ -211,7 +211,7 @@ pub async fn magic_consume(
 
             // Redirect to proxy or MFA depending on Gateway mode
             HttpResponse::Found()
-                .append_header((header::LOCATION, "/proxy/"))
+                .append_header((header::LOCATION, "/proxy/app"))
                 .finish()
         }
         Err(err) => {

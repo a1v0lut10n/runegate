@@ -164,6 +164,6 @@ pub async fn google_callback(
     info!("✅ User {} authenticated successfully via Google", email);
 
     HttpResponse::Found()
-        .append_header((header::LOCATION, "/proxy/"))
+        .append_header((header::LOCATION, "/proxy/app"))
         .finish()
 }
