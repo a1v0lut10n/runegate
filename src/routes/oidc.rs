@@ -163,7 +163,9 @@ pub async fn google_callback(
 
     info!("✅ User {} authenticated successfully via Google", email);
 
+    let redirect_path = std::env::var("RUNEGATE_DEFAULT_REDIRECT")
+        .unwrap_or_else(|_| "/proxy/".to_string());
     HttpResponse::Found()
-        .append_header((header::LOCATION, "/proxy/app"))
+        .append_header((header::LOCATION, redirect_path))
         .finish()
 }

@@ -340,6 +340,10 @@ RUNEGATE_TARGET_SERVICE=http://your-service-url
 # Base URL for magic links (defaults to http://localhost:7870)
 RUNEGATE_BASE_URL=https://your-public-url
 
+# Optional: Default redirect path after successful login/MFA (defaults to /proxy/)
+RUNEGATE_DEFAULT_REDIRECT=/proxy/
+
+
 # Magic link expiry time in minutes (defaults to 15)
 RUNEGATE_MAGIC_LINK_EXPIRY=60  # Set longer for apps requiring extended sessions
 

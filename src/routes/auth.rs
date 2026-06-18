@@ -210,8 +210,10 @@ pub async fn magic_consume(
             info!("✅ User {} pre-authenticated successfully", email);
 
             // Redirect to proxy or MFA depending on Gateway mode
+            let redirect_path = std::env::var("RUNEGATE_DEFAULT_REDIRECT")
+                .unwrap_or_else(|_| "/proxy/".to_string());
             HttpResponse::Found()
-                .append_header((header::LOCATION, "/proxy/app"))
+                .append_header((header::LOCATION, redirect_path))
                 .finish()
         }
         Err(err) => {
