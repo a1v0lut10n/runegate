@@ -122,7 +122,19 @@ async fn serve_login(
     req: HttpRequest,
     query: web::Query<AuthQueryParams>,
     renderer: web::Data<dyn runegate::ui::AuthUiRenderer>,
+    session: Session,
 ) -> impl Responder {
+    let is_authenticated = session
+        .get::<bool>("authenticated")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    if is_authenticated {
+        let return_to = query.return_to.clone().unwrap_or_else(|| "/app".to_string());
+        return HttpResponse::Found()
+            .append_header((header::LOCATION, return_to))
+            .finish();
+    }
+
     let ctx = create_auth_ui_context(&req, &query);
     match renderer.render_login(&ctx) {
         Ok(resp) => resp,
@@ -137,7 +149,19 @@ async fn serve_register(
     req: HttpRequest,
     query: web::Query<AuthQueryParams>,
     renderer: web::Data<dyn runegate::ui::AuthUiRenderer>,
+    session: Session,
 ) -> impl Responder {
+    let is_authenticated = session
+        .get::<bool>("authenticated")
+        .unwrap_or(None)
+        .unwrap_or(false);
+    if is_authenticated {
+        let return_to = query.return_to.clone().unwrap_or_else(|| "/app".to_string());
+        return HttpResponse::Found()
+            .append_header((header::LOCATION, return_to))
+            .finish();
+    }
+
     let ctx = create_auth_ui_context(&req, &query);
     match renderer.render_register(&ctx) {
         Ok(resp) => resp,
@@ -214,9 +238,20 @@ async fn auth_check_and_proxy(
         is_authenticated
     );
 
-    if is_authenticated {
-        // User is authenticated, proxy the request and inject identity headers
-        let identity_email = session.get::<String>("email").ok().flatten();
+    let path = req.path();
+    let is_public_path = path == "/"
+        || path == "/favicon.ico"
+        || path == "/favicon.svg"
+        || path.starts_with("/_app");
+
+    if is_authenticated || is_public_path {
+        // User is authenticated, or this is a public proxy path (e.g. landing page or assets).
+        // Proxy the request. If authenticated, inject identity headers.
+        let identity_email = if is_authenticated {
+            session.get::<String>("email").ok().flatten()
+        } else {
+            None
+        };
         proxy_request(req, payload, identity_email).await
     } else {
         // User is not authenticated, redirect to login

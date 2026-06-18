@@ -68,7 +68,11 @@ where
         let service = Rc::clone(&self.service);
 
         // Skip auth check for public endpoints
-        if path == "/login"
+        if path == "/"
+            || path == "/favicon.ico"
+            || path == "/favicon.svg"
+            || path.starts_with("/_app")
+            || path == "/login"
             || path == "/health"
             || path == "/rate_limit_info"
             || path == "/login.html"
