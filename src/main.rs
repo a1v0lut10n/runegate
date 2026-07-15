@@ -332,10 +332,26 @@ fn load_config() -> AppConfig {
     let upload_private_key = std::env::var("RUNEGATE_UPLOAD_PRIVATE_KEY").ok();
     let upload_jwks = std::env::var("RUNEGATE_UPLOAD_JWKS").ok();
 
+    let google_oidc = if let (Ok(client_id), Ok(client_secret), Ok(redirect_url)) = (
+        std::env::var("RUNEGATE_GOOGLE_CLIENT_ID"),
+        std::env::var("RUNEGATE_GOOGLE_CLIENT_SECRET"),
+        std::env::var("RUNEGATE_GOOGLE_REDIRECT_URL"),
+    ) {
+        info!("Google OIDC configuration loaded successfully from environment");
+        Some(runegate::config::OidcConfig {
+            client_id,
+            client_secret,
+            redirect_url,
+        })
+    } else {
+        debug!("Google OIDC environment variables not fully configured; SSO disabled");
+        None
+    };
+
     AppConfig {
         base_url,
         email_config,
-        google_oidc: None, // Load from env or file later if needed
+        google_oidc,
         upload_private_key,
         upload_jwks,
     }
