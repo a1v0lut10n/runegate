@@ -1,6 +1,6 @@
 # RUN-0004 — Magic-link-only backward compatibility for the gateway branch
 
-**Status:** Done (pending merge of `feature/RUN-4-gateway-functionality`)
+**Status:** Done (merged in v0.4.0)
 **Date:** 2026-08-09
 **Branch:** `feature/RUN-4-gateway-functionality`
 
