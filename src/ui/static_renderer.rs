@@ -28,7 +28,9 @@ impl AuthUiRenderer for StaticRenderer {
     }
 
     fn render_register(&self, _ctx: &AuthUiContext) -> Result<HttpResponse, RendererError> {
+        // Deployments without a register page (magic-link-only) fall back to login
         self.serve_static("register.html")
+            .or_else(|_| self.serve_static("login.html"))
     }
 
     fn render_magic_link_sent(&self, _ctx: &AuthUiContext) -> Result<HttpResponse, RendererError> {

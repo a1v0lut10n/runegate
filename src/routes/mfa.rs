@@ -1,5 +1,5 @@
-use actix_web::{web, HttpResponse, Responder, http::header};
 use actix_session::Session;
+use actix_web::{HttpResponse, Responder, http::header, web};
 use tracing::{error, info, instrument};
 
 #[derive(Debug, serde::Deserialize)]
@@ -33,15 +33,14 @@ pub async fn totp_verify(
         error!("Failed to set authenticated session: {}", e);
         return HttpResponse::InternalServerError().json("Session error");
     }
-    
+
     // Remove the preauth constraint
     session.remove("preauth_id");
     session.renew();
 
     info!("✅ User {} completed MFA successfully", email);
 
-    let redirect_path = std::env::var("RUNEGATE_DEFAULT_REDIRECT")
-        .unwrap_or_else(|_| "/proxy/".to_string());
+    let redirect_path = crate::config::default_redirect();
     HttpResponse::Found()
         .append_header((header::LOCATION, redirect_path))
         .finish()

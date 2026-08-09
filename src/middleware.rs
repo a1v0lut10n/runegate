@@ -11,7 +11,11 @@ use std::rc::Rc;
 use std::task::{Context, Poll};
 use tracing::{debug, instrument, warn};
 
-pub struct AuthMiddleware;
+use crate::config::RunegateMode;
+
+pub struct AuthMiddleware {
+    mode: RunegateMode,
+}
 
 impl Default for AuthMiddleware {
     fn default() -> Self {
@@ -20,8 +24,15 @@ impl Default for AuthMiddleware {
 }
 
 impl AuthMiddleware {
+    /// Legacy constructor: magic-link-only behaviour (the published default).
     pub fn new() -> Self {
-        AuthMiddleware
+        AuthMiddleware {
+            mode: RunegateMode::MagicLinkOnly,
+        }
+    }
+
+    pub fn with_mode(mode: RunegateMode) -> Self {
+        AuthMiddleware { mode }
     }
 }
 
@@ -40,12 +51,14 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(AuthMiddlewareService {
             service: Rc::new(service),
+            mode: self.mode,
         })
     }
 }
 
 pub struct AuthMiddlewareService<S> {
     service: Rc<S>,
+    mode: RunegateMode,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
@@ -67,23 +80,30 @@ where
         let path = req.path().to_owned();
         let service = Rc::clone(&self.service);
 
-        // Skip auth check for public endpoints
-        if path == "/"
-            || path == "/favicon.ico"
-            || path == "/favicon.svg"
-            || path.starts_with("/_app")
-            || path == "/login"
+        // Paths that are public in every mode (the published magic-link-only set)
+        let always_public = path == "/login"
             || path == "/health"
             || path == "/rate_limit_info"
             || path == "/login.html"
             || path == "/debug/session"
             || path == "/debug/cookies"
             || path.starts_with("/auth")
-            || path.starts_with("/mfa")
-            || path.starts_with("/keys")
             || path.starts_with("/static")
-            || path.starts_with("/img")
-        {
+            || path.starts_with("/img");
+
+        // Gateway-mode additions: a public landing page at the target root, its
+        // static assets, and the MFA/JWKS surface. In magic-link-only mode these
+        // stay authenticated, exactly as in the published release.
+        let gateway_public = self.mode == RunegateMode::Gateway
+            && (path == "/"
+                || path == "/favicon.ico"
+                || path == "/favicon.svg"
+                || path.starts_with("/_app")
+                || path.starts_with("/mfa")
+                || path.starts_with("/keys"));
+
+        // Skip auth check for public endpoints
+        if always_public || gateway_public {
             debug!("Allowing access to public endpoint: {}", path);
             let fut = service.call(req);
 
@@ -138,7 +158,10 @@ where
                 let res = fut.await?;
                 Ok(res.map_into_left_body())
             })
-        } else if preauth_id_exists {
+        } else if preauth_id_exists && self.mode == RunegateMode::Gateway {
+            // The PREAUTH → /mfa progression only exists in gateway mode; in
+            // magic-link-only mode a session is either fully authenticated or
+            // not, and /mfa is not a public path (guards against a redirect loop).
             debug!(
                 "User is in PREAUTH state accessing {}, redirecting to /mfa",
                 path

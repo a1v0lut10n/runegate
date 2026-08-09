@@ -1,18 +1,14 @@
-use actix_web::{web, HttpResponse, Responder, http::header};
-use oauth2::{
-    AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope,
-    TokenUrl,
-};
-use oauth2::basic::BasicClient;
 use crate::config::AppConfig;
 use actix_session::Session;
+use actix_web::{HttpResponse, Responder, http::header, web};
+use oauth2::basic::BasicClient;
+use oauth2::{
+    AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope, TokenUrl,
+};
 use tracing::{error, info, instrument};
 
 #[instrument(name = "google_start", skip(session, app_config))]
-pub async fn google_start(
-    session: Session,
-    app_config: web::Data<AppConfig>,
-) -> impl Responder {
+pub async fn google_start(session: Session, app_config: web::Data<AppConfig>) -> impl Responder {
     let oidc_config = match app_config.google_oidc.as_ref() {
         Some(config) => config,
         None => return HttpResponse::InternalServerError().json("Google OIDC not configured"),
@@ -20,7 +16,9 @@ pub async fn google_start(
 
     let client = BasicClient::new(ClientId::new(oidc_config.client_id.clone()))
         .set_client_secret(ClientSecret::new(oidc_config.client_secret.clone()))
-        .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
+        .set_auth_uri(
+            AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap(),
+        )
         .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
         .set_redirect_uri(RedirectUrl::new(oidc_config.redirect_url.clone()).unwrap());
 
@@ -68,7 +66,9 @@ pub async fn google_callback(
 
     let client = BasicClient::new(ClientId::new(oidc_config.client_id.clone()))
         .set_client_secret(ClientSecret::new(oidc_config.client_secret.clone()))
-        .set_auth_uri(AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap())
+        .set_auth_uri(
+            AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap(),
+        )
         .set_token_uri(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap())
         .set_redirect_uri(RedirectUrl::new(oidc_config.redirect_url.clone()).unwrap());
 
@@ -87,8 +87,8 @@ pub async fn google_callback(
     };
     let pkce_verifier = oauth2::PkceCodeVerifier::new(pkce_secret);
 
-    use oauth2::TokenResponse;
     use oauth2::AuthorizationCode;
+    use oauth2::TokenResponse;
 
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
@@ -111,13 +111,13 @@ pub async fn google_callback(
 
     // We have the access token, now we need to fetch user profile to get email.
     let access_token = token.access_token().secret();
-    
+
     let res = http_client
         .get("https://www.googleapis.com/oauth2/v2/userinfo")
         .bearer_auth(access_token)
         .send()
         .await;
-        
+
     let user_info = match res {
         Ok(r) => match r.json::<serde_json::Value>().await {
             Ok(json) => json,
@@ -125,7 +125,7 @@ pub async fn google_callback(
         },
         Err(_) => return HttpResponse::InternalServerError().json("Failed to fetch userinfo"),
     };
-    
+
     let email = match user_info.get("email").and_then(|v| v.as_str()) {
         Some(e) => e.to_string(),
         None => return HttpResponse::BadRequest().json("No email provided by Google"),
@@ -139,7 +139,12 @@ pub async fn google_callback(
             }
         } else {
             // Open signup: create user if they don't exist
-            if store.get_user_by_email(&email).await.unwrap_or(None).is_none() {
+            if store
+                .get_user_by_email(&email)
+                .await
+                .unwrap_or(None)
+                .is_none()
+            {
                 let _ = store.create_user(&email).await;
             }
         }
@@ -154,7 +159,7 @@ pub async fn google_callback(
         error!("Failed to set email in session: {}", e);
         return HttpResponse::InternalServerError().json("Session error");
     }
-    
+
     // Clear out OIDC temporaries
     session.remove("oidc_csrf");
     session.remove("oidc_pkce");
@@ -163,8 +168,7 @@ pub async fn google_callback(
 
     info!("✅ User {} authenticated successfully via Google", email);
 
-    let redirect_path = std::env::var("RUNEGATE_DEFAULT_REDIRECT")
-        .unwrap_or_else(|_| "/proxy/".to_string());
+    let redirect_path = crate::config::default_redirect();
     HttpResponse::Found()
         .append_header((header::LOCATION, redirect_path))
         .finish()

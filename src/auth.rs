@@ -39,7 +39,11 @@ pub struct Claims {
     pub sub: String, // The subject (usually email)
     pub exp: usize,  // Expiration time
     pub iat: usize,  // Issued at time
-    pub jti: String, // JWT ID to ensure single use
+    // JWT ID to ensure single use. Tokens minted by the published v0.3.x
+    // release carry no jti; defaulting keeps in-flight magic links valid
+    // across an upgrade (they simply can't participate in replay tracking).
+    #[serde(default)]
+    pub jti: String,
 }
 
 /// Creates a JWT token for a user

@@ -1,8 +1,8 @@
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use actix_web::{HttpRequest, HttpResponse, Responder, web};
 use serde::{Deserialize, Serialize};
+use std::env;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
-use std::env;
 
 use crate::store::pg::PgStore;
 
@@ -47,11 +47,16 @@ fn check_admin_token(req: &HttpRequest) -> bool {
 pub async fn create_invite(
     req: HttpRequest,
     req_body: web::Json<CreateInviteRequest>,
-    pg_store: web::Data<PgStore>,
+    pg_store: Option<web::Data<PgStore>>,
 ) -> impl Responder {
     if !check_admin_token(&req) {
         return HttpResponse::Unauthorized().json("Unauthorized admin access");
     }
+
+    let Some(pg_store) = pg_store else {
+        return HttpResponse::ServiceUnavailable()
+            .json("Admin API requires a PostgreSQL backend (DATABASE_URL)");
+    };
 
     // Generate a random 12-character alphanumeric code
     use rand::RngExt;
@@ -81,13 +86,13 @@ pub async fn create_invite(
 #[instrument(name = "admin_get_invites", skip(req, _pg_store))]
 pub async fn get_invites(
     req: HttpRequest,
-    _pg_store: web::Data<PgStore>,
+    _pg_store: Option<web::Data<PgStore>>,
 ) -> impl Responder {
     if !check_admin_token(&req) {
         return HttpResponse::Unauthorized().json("Unauthorized admin access");
     }
 
-    // This is a placeholder since get_all_invites wasn't strictly required in the schema, 
+    // This is a placeholder since get_all_invites wasn't strictly required in the schema,
     // but the route exists. Returning Not Implemented for now.
     HttpResponse::NotImplemented().json("Get invites list not fully implemented yet")
 }
@@ -96,11 +101,16 @@ pub async fn get_invites(
 pub async fn revoke_invite(
     req: HttpRequest,
     path: web::Path<Uuid>,
-    pg_store: web::Data<PgStore>,
+    pg_store: Option<web::Data<PgStore>>,
 ) -> impl Responder {
     if !check_admin_token(&req) {
         return HttpResponse::Unauthorized().json("Unauthorized admin access");
     }
+
+    let Some(pg_store) = pg_store else {
+        return HttpResponse::ServiceUnavailable()
+            .json("Admin API requires a PostgreSQL backend (DATABASE_URL)");
+    };
 
     let invite_id = path.into_inner();
 

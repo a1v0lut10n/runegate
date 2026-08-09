@@ -40,29 +40,41 @@ pub async fn identify(
                     Some(code) => {
                         let invite = store.get_invite_by_code(code).await.unwrap_or(None);
                         match invite {
-                            Some(inv) => {
-                                match store.create_user(email).await {
-                                    Ok(new_user) => {
-                                        if let Err(e) = store.consume_invite(inv.id, new_user.id).await {
-                                            error!("Failed to consume invite: {}", e);
-                                            return HttpResponse::InternalServerError().json("Failed to process invite");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to create user: {}", e);
-                                        return HttpResponse::InternalServerError().json("Database error");
+                            Some(inv) => match store.create_user(email).await {
+                                Ok(new_user) => {
+                                    if let Err(e) = store.consume_invite(inv.id, new_user.id).await
+                                    {
+                                        error!("Failed to consume invite: {}", e);
+                                        return HttpResponse::InternalServerError()
+                                            .json("Failed to process invite");
                                     }
                                 }
+                                Err(e) => {
+                                    error!("Failed to create user: {}", e);
+                                    return HttpResponse::InternalServerError()
+                                        .json("Database error");
+                                }
+                            },
+                            None => {
+                                return HttpResponse::Forbidden()
+                                    .json("Invalid or expired invite code.");
                             }
-                            None => return HttpResponse::Forbidden().json("Invalid or expired invite code."),
                         }
                     }
-                    None => return HttpResponse::Forbidden().json("An invite code is required to sign up."),
+                    None => {
+                        return HttpResponse::Forbidden()
+                            .json("An invite code is required to sign up.");
+                    }
                 }
             }
         } else {
             // Open signup: create user if they don't exist
-            if store.get_user_by_email(email).await.unwrap_or(None).is_none() {
+            if store
+                .get_user_by_email(email)
+                .await
+                .unwrap_or(None)
+                .is_none()
+            {
                 let _ = store.create_user(email).await;
             }
         }
@@ -94,7 +106,12 @@ pub async fn magic_start(
             }
         } else {
             // Open signup: create user if they don't exist
-            if store.get_user_by_email(email).await.unwrap_or(None).is_none() {
+            if store
+                .get_user_by_email(email)
+                .await
+                .unwrap_or(None)
+                .is_none()
+            {
                 let _ = store.create_user(email).await;
             }
         }
@@ -149,9 +166,12 @@ pub async fn magic_start(
             HttpResponse::Ok().json(format!("Magic link sent to {}", email))
         }
         Err(e) => {
-            warn!("Failed to send magic link email (falling back to stdout/log display): {}", e);
+            warn!(
+                "Failed to send magic link email (falling back to stdout/log display): {}",
+                e
+            );
             info!("📧 [DEV/FALLBACK] Magic link for {}: {}", email, login_url);
-            HttpResponse::Ok().json(format!("Magic link generated (check server logs/email)"))
+            HttpResponse::Ok().json("Magic link generated (check server logs/email)")
         }
     }
 }
@@ -210,8 +230,7 @@ pub async fn magic_consume(
             info!("✅ User {} pre-authenticated successfully", email);
 
             // Redirect to proxy or MFA depending on Gateway mode
-            let redirect_path = std::env::var("RUNEGATE_DEFAULT_REDIRECT")
-                .unwrap_or_else(|_| "/proxy/".to_string());
+            let redirect_path = crate::config::default_redirect();
             HttpResponse::Found()
                 .append_header((header::LOCATION, redirect_path))
                 .finish()
