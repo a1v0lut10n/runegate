@@ -30,16 +30,14 @@ below are reviewed and the design record's status is flipped to `accepted`.
 - **A0 — Fronting-model design record.** Done:
   `docs/design/2026-08-09-aicognito-token-issuer-model.md` (status
   `proposed`, awaiting review).
-- **A1 — Pin the token contract details** (amend the design record or a
-  short follow-up record):
-  - Claim set: `iss` (Runegate origin), `sub` (`users.id` UUID), `aud`
-    (`aicognito`), `exp`/`iat`, `scope`, `email` as informational claim.
-  - TTL policy: access ~15 min; refresh 30–90 days with rotation-on-use.
-  - Scope vocabulary aligned with AICognito's permission model
-    (`git.read`, `git.write`, `repo.admin`, …).
-  - Client registrations: `aicognito-cli` (public client, PKCE + device
-    flow, `http://127.0.0.1:*/callback` redirects), AICognito web UI
-    (confidential client).
+- **A1 — Pin the token contract details.** Done — the authoritative contract
+  now lives in aicognito
+  `docs/architecture/runegate-aicognito-auth-token-contract.md` (reviewed
+  2026-08-09 from the Runegate v0.4.0 perspective; §5 endpoint surface,
+  §5.1 Runegate v1 constraints, §7 claims incl. `typ: at+jwt` and
+  `sub` = `users.id` UUID, §7.4 TTLs, §8 refresh rotation, §9 scopes,
+  §15 contract tests). Remaining A1 work is only resolving that doc's §16
+  open questions 3, 4, and 6.
 - **A2 — Runegate: issuer plumbing** (future ticket): signing-key
   management + rotation; generalize `/keys/upload_jwks.json` into an issuer
   JWKS; issuer metadata discovery endpoint.

@@ -104,6 +104,8 @@ Harder / newly required:
 
 ## Links
 
+- Authoritative contract: aicognito
+  `docs/architecture/runegate-aicognito-auth-token-contract.md`
 - Implementation plan: `../implementation/backlog/2026-08-09-run-0005-aicognito-auth-token-contract.md`
 - AICognito architecture: aicognito `docs/architecture/aicognito-architecture.md`
 - First-integration lessons: `../howto/fronting-a-service.md`
