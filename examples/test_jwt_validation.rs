@@ -52,7 +52,7 @@ fn main() {
     let secret = get_jwt_secret();
     println!("DEBUG: Using JWT secret length: {} bytes", secret.len());
 
-    match action.as_ref() {
+    match action {
         "create" => {
             // Create a token with configured expiry
             let expiry_minutes = get_magic_link_expiry();

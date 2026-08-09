@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 pub mod memory;
-pub mod session;
 pub mod pg;
+pub mod session;
 
 #[derive(Debug)]
 pub enum StoreError {

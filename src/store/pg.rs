@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
 use tracing::info;
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct PgStore {
@@ -51,21 +51,17 @@ pub struct Invite {
 // Identity Store Implementation
 impl PgStore {
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "SELECT id, email FROM users WHERE email = $1"
-        )
-        .bind(email)
-        .fetch_optional(&self.pool)
-        .await
+        sqlx::query_as::<_, User>("SELECT id, email FROM users WHERE email = $1")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await
     }
 
     pub async fn create_user(&self, email: &str) -> Result<User, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "INSERT INTO users (email) VALUES ($1) RETURNING id, email"
-        )
-        .bind(email)
-        .fetch_one(&self.pool)
-        .await
+        sqlx::query_as::<_, User>("INSERT INTO users (email) VALUES ($1) RETURNING id, email")
+            .bind(email)
+            .fetch_one(&self.pool)
+            .await
     }
 }
 
@@ -73,31 +69,33 @@ impl PgStore {
 impl PgStore {
     pub async fn get_invite_by_code(&self, code: &str) -> Result<Option<Invite>, sqlx::Error> {
         sqlx::query_as::<_, Invite>(
-            "SELECT id, code, max_uses, is_revoked FROM invites WHERE code = $1"
+            "SELECT id, code, max_uses, is_revoked FROM invites WHERE code = $1",
         )
         .bind(code)
         .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn consume_invite(&self, invite_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn consume_invite(
+        &self,
+        invite_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
-        let usage_row = sqlx::query(
-            "SELECT COUNT(*) as count FROM invite_usages WHERE invite_id = $1"
-        )
-        .bind(invite_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let usage_row =
+            sqlx::query("SELECT COUNT(*) as count FROM invite_usages WHERE invite_id = $1")
+                .bind(invite_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         let usage_count: i64 = sqlx::Row::try_get(&usage_row, "count").unwrap_or(0);
 
-        let invite_row = sqlx::query(
-            "SELECT max_uses, is_revoked FROM invites WHERE id = $1 FOR UPDATE"
-        )
-        .bind(invite_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let invite_row =
+            sqlx::query("SELECT max_uses, is_revoked FROM invites WHERE id = $1 FOR UPDATE")
+                .bind(invite_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         let max_uses: i32 = sqlx::Row::try_get(&invite_row, "max_uses")?;
         let is_revoked: bool = sqlx::Row::try_get(&invite_row, "is_revoked")?;
@@ -107,19 +105,21 @@ impl PgStore {
             return Ok(false);
         }
 
-        sqlx::query(
-            "INSERT INTO invite_usages (invite_id, user_id) VALUES ($1, $2)"
-        )
-        .bind(invite_id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT INTO invite_usages (invite_id, user_id) VALUES ($1, $2)")
+            .bind(invite_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(true)
     }
 
-    pub async fn create_admin_invite(&self, code: &str, max_uses: i32) -> Result<Invite, sqlx::Error> {
+    pub async fn create_admin_invite(
+        &self,
+        code: &str,
+        max_uses: i32,
+    ) -> Result<Invite, sqlx::Error> {
         sqlx::query_as::<_, Invite>(
             "INSERT INTO invites (code, max_uses) VALUES ($1, $2) RETURNING id, code, max_uses, is_revoked"
         )
@@ -148,7 +148,7 @@ impl PgStore {
         details: Option<serde_json::Value>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO audit_logs (user_id, action, ip_address, details) VALUES ($1, $2, $3, $4)"
+            "INSERT INTO audit_logs (user_id, action, ip_address, details) VALUES ($1, $2, $3, $4)",
         )
         .bind(user_id)
         .bind(action)

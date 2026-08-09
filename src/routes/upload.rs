@@ -1,9 +1,9 @@
-use actix_web::{web, HttpResponse, Responder};
 use actix_session::Session;
-use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
+use actix_web::{HttpResponse, Responder, web};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{error, info, instrument};
 
 use crate::config::AppConfig;
 
@@ -24,21 +24,27 @@ pub async fn create_upload_ticket(
         _ => return HttpResponse::Unauthorized().json("Not authenticated"),
     };
 
-    let authenticated = session.get::<bool>("authenticated").unwrap_or(Some(false)).unwrap_or(false);
+    let authenticated = session
+        .get::<bool>("authenticated")
+        .unwrap_or(Some(false))
+        .unwrap_or(false);
     if !authenticated {
         return HttpResponse::Forbidden().json("Requires full session authentication");
     }
 
     let private_key_pem = match &app_config.upload_private_key {
         Some(key) => key,
-        None => return HttpResponse::NotImplemented().json("Upload tickets are not configured on this server"),
+        None => {
+            return HttpResponse::NotImplemented()
+                .json("Upload tickets are not configured on this server");
+        }
     };
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs();
-    
+
     // Short-lived ticket (e.g., 15 minutes)
     let claims = UploadTicketClaims {
         sub: email.clone(),
