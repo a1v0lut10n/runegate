@@ -1,7 +1,7 @@
 ---
 date: 2026-08-09
 type: design
-status: proposed
+status: accepted
 components: []
 aspects: []
 tags: [aicognito, oidc, tokens, authn]

@@ -73,7 +73,8 @@ maintenance branch is cut from a tag only if a hotfix is ever needed while
 ## Verification
 
 - [x] Design record written and linked from this plan.
-- [ ] Contract details (A1) reviewed and design record `accepted`.
+- [x] Contract details (A1) reviewed and design record `accepted`
+      (2026-08-09; contract doc in aicognito PR #1).
 - [ ] Follow-up runegate tickets claimed for A2–A4.
 - [ ] AICognito repo scaffolded with COG prefix; A5 tickets created there.
 - [ ] Contract registered in aivolution-meta (A6).
