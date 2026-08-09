@@ -39,11 +39,16 @@ pub struct Claims {
     pub sub: String, // The subject (usually email)
     pub exp: usize,  // Expiration time
     pub iat: usize,  // Issued at time
+    // JWT ID to ensure single use. Tokens minted by the published v0.3.x
+    // release carry no jti; defaulting keeps in-flight magic links valid
+    // across an upgrade (they simply can't participate in replay tracking).
+    #[serde(default)]
+    pub jti: String,
 }
 
 /// Creates a JWT token for a user
-#[instrument(fields(email = %email, expiry_minutes = %expiry_minutes))]
-pub fn create_token(email: &str, expiry_minutes: u64) -> Result<String, AuthError> {
+#[instrument(fields(email = %email, expiry_minutes = %expiry_minutes, jti = %jti))]
+pub fn create_token(email: &str, expiry_minutes: u64, jti: &str) -> Result<String, AuthError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| AuthError::TimeError(format!("Failed to get current time: {}", e)))?
@@ -56,6 +61,7 @@ pub fn create_token(email: &str, expiry_minutes: u64) -> Result<String, AuthErro
         sub: email.to_owned(),
         exp: expiration,
         iat: now,
+        jti: jti.to_owned(),
     };
 
     let secret = get_jwt_secret();
@@ -67,9 +73,15 @@ pub fn create_token(email: &str, expiry_minutes: u64) -> Result<String, AuthErro
     .map_err(|e| AuthError::TokenCreationError(e.to_string()))
 }
 
-/// Verifies a JWT token and returns the user's email if valid
+#[derive(Debug)]
+pub struct VerifiedToken {
+    pub sub: String,
+    pub jti: String,
+}
+
+/// Verifies a JWT token and returns the verified token payload
 #[instrument(skip(token), fields(token_truncated = %format!("{}..", &token.chars().take(10).collect::<String>())))]
-pub fn verify_token(token: &str) -> Result<String, JwtError> {
+pub fn verify_token(token: &str) -> Result<VerifiedToken, JwtError> {
     let secret = get_jwt_secret();
     info!(
         "[JWT_DEBUG] verify_token called with secret length: {} bytes",
@@ -104,7 +116,10 @@ pub fn verify_token(token: &str) -> Result<String, JwtError> {
                 token_data.claims.exp as i64 - now as i64
             );
 
-            Ok(token_data.claims.sub)
+            Ok(VerifiedToken {
+                sub: token_data.claims.sub,
+                jti: token_data.claims.jti,
+            })
         }
         Err(e) => {
             error!("[JWT_DEBUG] Token validation failed: {:?}", e);
@@ -120,13 +135,14 @@ pub fn verify_token(token: &str) -> Result<String, JwtError> {
 }
 
 /// Generates a magic link URL for authentication
-#[instrument(fields(email = %email, base_url = %base_url, expiry_minutes = %expiry_minutes))]
+#[instrument(fields(email = %email, base_url = %base_url, expiry_minutes = %expiry_minutes, jti = %jti))]
 pub fn generate_magic_link(
     email: &str,
     base_url: &str,
     expiry_minutes: u64,
+    jti: &str,
 ) -> Result<String, AuthError> {
-    let token = create_token(email, expiry_minutes)?;
+    let token = create_token(email, expiry_minutes, jti)?;
     Ok(format!("{}/auth?token={}", base_url, token))
 }
 

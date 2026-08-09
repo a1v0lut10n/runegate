@@ -1,0 +1,33 @@
+---
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Create Nginx configuration
+  template:
+    src: runegate.conf.j2
+    dest: /etc/nginx/sites-available/runegate.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Nginx
+
+- name: Enable Nginx configuration
+  file:
+    src: /etc/nginx/sites-available/runegate.conf
+    dest: /etc/nginx/sites-enabled/runegate.conf
+    state: link
+  notify: Restart Nginx
+
+- name: Ensure default Nginx config is removed
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart Nginx
+
+- name: Ensure Nginx is enabled and started
+  service:
+    name: nginx
+    state: started
+    enabled: yes

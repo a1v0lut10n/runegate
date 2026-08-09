@@ -70,7 +70,9 @@ pub async fn proxy_request(
         !h.as_str().eq_ignore_ascii_case("X-Forwarded-User") &&
         !h.as_str().eq_ignore_ascii_case("X-Forwarded-Email") &&
         !h.as_str().eq_ignore_ascii_case("X-Runegate-Authenticated") &&
-        !h.as_str().eq_ignore_ascii_case("X-Runegate-User")
+        !h.as_str().eq_ignore_ascii_case("X-Runegate-User") &&
+        !h.as_str().eq_ignore_ascii_case("X-User-Id") &&
+        !h.as_str().eq_ignore_ascii_case("X-User-Email")
     }) {
         forwarded_req = forwarded_req.insert_header((header_name.clone(), header_value.clone()));
     }
@@ -125,7 +127,9 @@ pub async fn proxy_request(
             forwarded_req = forwarded_req.insert_header(("X-Runegate-Authenticated", "true"));
             forwarded_req = forwarded_req.insert_header(("X-Runegate-User", email.clone()));
             forwarded_req = forwarded_req.insert_header(("X-Forwarded-User", email.clone()));
-            forwarded_req = forwarded_req.insert_header(("X-Forwarded-Email", email));
+            forwarded_req = forwarded_req.insert_header(("X-Forwarded-Email", email.clone()));
+            forwarded_req = forwarded_req.insert_header(("X-User-Id", email.clone()));
+            forwarded_req = forwarded_req.insert_header(("X-User-Email", email));
         } else {
             forwarded_req = forwarded_req.insert_header(("X-Runegate-Authenticated", "false"));
         }

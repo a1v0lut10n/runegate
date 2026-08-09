@@ -198,7 +198,7 @@ mod api_tests {
 
             // First, check the actual rate limiting configuration
             println!("🔍 Checking actual rate limit configuration from server...");
-            let config_res = client.get(&format!("{}/rate_limit_info", SERVER_URL))
+            let config_res = client.get(format!("{}/rate_limit_info", SERVER_URL))
                 .send()
                 .await
                 .unwrap();
