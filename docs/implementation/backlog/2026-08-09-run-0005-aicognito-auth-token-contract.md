@@ -25,6 +25,17 @@ implementation happens under follow-up tickets claimed from `docs/NEXT-TICKET`
 per phase. Runegate implementation must not begin before the contract details
 below are reviewed and the design record's status is flipped to `accepted`.
 
+## Branching & release discipline
+
+Trunk-based, no long-lived development branch. Each A2–A4 PR merges to
+`main` individually, with the token surface **dark by default** (absent/501
+without gateway mode + `DATABASE_URL` + issuer config) as an explicit
+acceptance criterion, enforced by extending the backward-compat suite.
+Releases are tags published deliberately (`v0.5.0` for the token issuer);
+deployments pin tags (verbatime's ansible pins `v0.4.0`). A `release/0.x`
+maintenance branch is cut from a tag only if a hotfix is ever needed while
+`main` carries unreleased work.
+
 ## Action items
 
 - **A0 — Fronting-model design record.** Done:
