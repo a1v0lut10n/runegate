@@ -81,3 +81,14 @@ After completing a meaningful unit of work, log a journal entry
 (`docs/journal/YYYY-MM/YYYY-MM-DD-short-title.md`) — use the
 `/aivolution:journal` skill. Draft and confirm before writing; entries are
 immutable once committed.
+
+## Conventions from Aivolution SWE
+
+Generated from Aivolution SWE's conventions (mastermind:
+aivolution-mastermind).
+
+- Journal significant events under `docs/journal/`.
+- Record decisions as ADRs under `docs/decisions/`.
+- Plan non-trivial work under `docs/implementation/`.
+- Everything lands reviewably; nothing is written
+silently.
